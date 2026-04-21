@@ -1,0 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;700;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-brand-bg: #f8fafc;
+  --color-brand-surface: #ffffff;
+  --color-brand-card: #ffffff;
+  --color-header-bg: #0f172a;
+  --color-brand-accent: #1e293b;
+  
+  /* Group Colors */
+  --color-group-a: #2563eb;
+  --color-group-b: #059669;
+  
+  --color-cricket-wicket: #e11d48;
+  --color-cricket-six: #16a34a;
+  --color-cricket-four: #d97706;
+  --color-cricket-dot: #64748b;
+}
+
+@layer base {
+  body {
+    @apply bg-brand-bg text-slate-900 font-sans antialiased selection:bg-blue-600 selection:text-white;
+    text-rendering: optimizeLegibility;
+  }
+}
+
+@layer components {
+  .high-contrast-card {
+    @apply bg-brand-card border border-slate-200 rounded-xl shadow-sm overflow-hidden;
+  }
+  
+  .label-caps {
+    @apply text-[12px] uppercase tracking-wider font-bold text-slate-500;
+  }
+  
+  .manage-text-sm {
+    @apply text-[13px] font-medium leading-tight;
+  }
+
+  .manage-label-sm {
+    @apply text-[11px] uppercase font-bold tracking-tighter text-slate-400 mb-1 block;
+  }
+
+  .score-big {
+    @apply text-7xl font-black leading-none tracking-tighter text-slate-900;
+  }
+
+  .ball-circle {
+    @apply w-7 h-7 flex items-center justify-center rounded-md text-xs font-black border transition-transform active:scale-95;
+  }
+  
+  .ball-dot { @apply bg-slate-50 border-slate-200 text-slate-400; }
+  .ball-run { @apply bg-white border-slate-800 text-slate-800; }
+  .ball-four { @apply bg-amber-50 border-amber-500 text-amber-700; }
+  .ball-six { @apply bg-emerald-50 border-emerald-600 text-emerald-700; }
+  .ball-wicket { @apply bg-rose-50 border-rose-600 text-rose-600; }
+  .ball-extra { @apply bg-sky-50 border-sky-500 text-sky-600; }
+
+  .admin-input {
+    @apply bg-white border-2 border-slate-200 text-slate-900 text-base px-4 py-3 rounded-lg focus:border-slate-900 outline-none transition-all;
+  }
+
+  .btn-primary {
+    @apply bg-slate-900 text-white font-black uppercase text-sm py-4 px-6 rounded-lg hover:bg-slate-800 transition-colors active:scale-95;
+  }
+}
