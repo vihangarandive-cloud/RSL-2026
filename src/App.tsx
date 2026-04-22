@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Trophy, 
@@ -19,7 +19,8 @@ import {
   Trash2,
   Upload,
   UserPlus,
-  GitBranch
+  GitBranch,
+  X
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -210,57 +211,181 @@ function BallBadge(props: any) {
   );
 }
 
-function MatchBanner({ match, tournament }: { match: Match, tournament: any }) {
+function OverTrackerPanel({ inning, className }: { inning: any, className?: string }) {
+  if (!inning || !inning.overs || inning.overs.length === 0) return null;
+
+  return (
+    <div className={cn("bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-100 p-4 lg:p-5 w-full max-w-[340px] mx-auto", className)}>
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-2 h-2 rounded-full bg-blue-600 shadow-[0_0_8px_#2563eb]"></div>
+        <h3 className="text-[11px] font-black italic tracking-widest uppercase text-slate-700">Tracker</h3>
+      </div>
+      
+      <div className="space-y-4">
+        {inning.overs.map((over: any, idx: number) => {
+          // Calculate if we need empty boxes (usually to complete 6 legal balls if over is in progress)
+          const legalBallsCount = over.balls.filter((b: any) => b.type !== 'wide' && b.type !== 'no-ball').length;
+          const targetLegalBalls = over.number === 0 ? 4 : 6;
+          const emptyBoxesCount = Math.max(0, targetLegalBalls - legalBallsCount);
+          const emptyBoxes = Array(emptyBoxesCount).fill(null);
+
+          return (
+            <div key={idx} className="space-y-1.5">
+              <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-wider">
+                Over {over.number + 1}
+              </h4>
+              <div className="flex flex-wrap gap-1.5">
+                {over.balls.map((ball: any, bIdx: number) => {
+                  const isExtra = ball.type === 'wide' || ball.type === 'no-ball';
+                  const isBoundary = ball.runs >= 4 || ball.runs === 6;
+                  const isWicket = ball.type === 'wicket';
+                  const isDot = ball.type === 'dot';
+                  
+                  return (
+                    <div key={bIdx} className={cn(
+                      "w-7 h-7 sm:w-8 sm:h-8 rounded-md flex items-center justify-center font-black text-[10px] sm:text-[12px] shadow-sm transition-all",
+                      isExtra ? "bg-blue-400 text-white" : // Light blue for Wd, Nb
+                      isBoundary ? "bg-orange-500 text-white" : // Orange for Boundaries
+                      isWicket ? "bg-red-500 text-white text-[11px] sm:text-[13px]" : // Red for Wicket
+                      "bg-blue-600 text-white" // Standard Deep Blue for 0, 1, 2, 3
+                    )}>
+                       {isWicket ? 'W' : isDot ? '0' : ball.type === 'wide' ? 'Wd' : ball.type === 'no-ball' ? 'Nb' : ball.type}
+                    </div>
+                  )
+                })}
+                {/* Render empty boxes to complete the over visually if it is the current over */}
+                {idx === inning.overs.length - 1 && emptyBoxes.map((_, i) => (
+                  <div key={`empty-${i}`} className="w-7 h-7 sm:w-8 sm:h-8 rounded-md flex items-center justify-center border border-slate-100 bg-slate-50/50"></div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MatchBanner({ match, tournament, inningIndex = 0, striker, nonStriker, hideRecentTrackers = false, onTeamClick }: { match: Match, tournament: any, inningIndex?: number, striker?: string, nonStriker?: string, hideRecentTrackers?: boolean, onTeamClick?: (teamId: string) => void }) {
   if (!match) return null;
   const teamA = tournament.teams.find((t: any) => t.id === match.teamA);
   const teamB = tournament.teams.find((t: any) => t.id === match.teamB);
   
-  const statsA = calculateInningsStats(match, 0);
+  // Batting team order: Batting team should come first
+  const battingTeam = inningIndex === 0 ? teamA : teamB;
+  const bowlingTeam = inningIndex === 0 ? teamB : teamA;
+  const stats = calculateInningsStats(match, inningIndex);
+
+  const getPlayerScore = (name: string) => {
+    if (!name) return 0;
+    let runs = 0;
+    if (!match.innings[inningIndex]) return 0;
+    match.innings[inningIndex].overs.forEach(o => o.balls.forEach(b => {
+      if (b.striker === name) runs += b.runs;
+    }));
+    return runs;
+  };
+
+  // Only show balls for the CURRENT over
+  const currentOver = match.innings[inningIndex]?.overs[match.innings[inningIndex]?.overs.length - 1];
+  const recentBalls = currentOver ? currentOver.balls : [];
 
   return (
-    <div className="high-contrast-card p-4 bg-white border-l-8 border-l-slate-900 shadow-md">
-      <div className="flex flex-wrap justify-between items-center mb-3 pb-2 border-b border-slate-100 gap-y-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className={cn("px-2 py-0.5 rounded text-[10px] font-black uppercase text-white", teamA?.group === 'A' ? "bg-blue-600" : "bg-emerald-600")}>
-            Group {teamA?.group}
+    <div className="bg-white/95 backdrop-blur-sm rounded-[24px] sm:rounded-[32px] shadow-lg border-t-[6px] sm:border-t-[8px] border-blue-600 overflow-hidden relative">
+      <div className="p-3 sm:p-7 space-y-4 sm:space-y-6">
+        {/* Header Section: Match ID, Teams, and Players */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-3">
+            <div className="inline-block px-2 sm:px-3 py-0.5 sm:py-1 rounded-md sm:rounded-lg bg-blue-600 text-white font-black text-[8px] sm:text-[10px] uppercase tracking-widest">
+              MATCH {match.id.toUpperCase().replace('M', '')}
+            </div>
+            
+            <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+              <div 
+                className="flex items-center gap-2 sm:gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={() => onTeamClick && battingTeam?.id && onTeamClick(battingTeam.id)}
+              >
+                {battingTeam?.logo && <img src={battingTeam.logo} className="w-6 h-6 sm:w-10 sm:h-10 object-contain" referrerPolicy="no-referrer" />}
+                <h2 className="text-lg sm:text-3xl font-black uppercase tracking-tight text-slate-800 leading-none hover:underline decoration-blue-500">
+                  {battingTeam?.name}
+                </h2>
+                <span className="text-slate-200 font-bold text-[10px] sm:text-xs italic">vs</span>
+              </div>
+              <div 
+                className="flex items-center gap-2 sm:gap-3 opacity-30 cursor-pointer hover:opacity-60 transition-opacity"
+                onClick={() => onTeamClick && bowlingTeam?.id && onTeamClick(bowlingTeam.id)}
+              >
+                <h2 className="text-md sm:text-2xl font-black uppercase tracking-tight text-slate-600 leading-none hover:underline decoration-slate-400">
+                  {bowlingTeam?.name}
+                </h2>
+                {bowlingTeam?.logo && <img src={bowlingTeam.logo} className="w-5 h-5 sm:w-8 sm:h-8 object-contain" referrerPolicy="no-referrer" />}
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            {teamA?.logo && <img src={teamA.logo} className="w-12 h-12 object-contain" referrerPolicy="no-referrer" />}
-            <h2 className="text-xl font-black uppercase tracking-tight text-slate-800">{teamA?.name}</h2>
-          </div>
-          <span className="label-caps opacity-30 text-[10px]">vs</span>
-          <div className="flex items-center gap-3">
-            {teamB?.logo && <img src={teamB.logo} className="w-12 h-12 object-contain opacity-40 grayscale" referrerPolicy="no-referrer" />}
-            <h2 className="text-xl font-black uppercase tracking-tight text-slate-400">{teamB?.name}</h2>
-          </div>
-        </div>
-        <div className="text-right">
-          <span className="text-[9px] font-black uppercase bg-slate-100 px-2 py-0.5 rounded text-slate-500">{match.title}</span>
-        </div>
-      </div>
-      
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-        <div className="flex-1 flex items-baseline gap-4">
-          <div className="text-5xl font-black leading-none tracking-tighter text-slate-900">
-            {statsA.runs}<span className="text-slate-300 mx-1">/</span><span className="text-2xl">{statsA.wickets}</span>
-          </div>
-          <div className="text-xl font-bold text-slate-400">
-            {statsA.overs} <span className="text-[10px] uppercase text-slate-300">Overs</span>
+
+          <div className="flex flex-col gap-1.5 sm:gap-3 items-end shrink-0">
+             <div className="flex items-center justify-end gap-2 sm:gap-4">
+               <span className="text-[8px] sm:text-[11px] font-black uppercase text-blue-600 tracking-tight">{striker} (B) ★</span>
+               <div className="bg-blue-600 text-white w-7 h-7 sm:w-11 sm:h-11 rounded-lg sm:rounded-2xl flex items-center justify-center text-xs sm:text-lg font-black shadow-md border-b-2 sm:border-b-4 border-blue-800">
+                 {getPlayerScore(striker || '')}
+               </div>
+             </div>
+             <div className="flex items-center justify-end gap-2 sm:gap-4 opacity-40">
+               <span className="text-[8px] sm:text-[11px] font-black uppercase text-slate-500 tracking-tight">{nonStriker}</span>
+               <div className="bg-slate-100 text-slate-500 w-7 h-7 sm:w-11 sm:h-11 rounded-lg sm:rounded-2xl flex items-center justify-center text-xs sm:text-lg font-black border-b-2 sm:border-b-4 border-slate-200">
+                 {getPlayerScore(nonStriker || '')}
+               </div>
+             </div>
           </div>
         </div>
 
-        <div className="flex gap-4 items-center">
-           <div className="text-center bg-slate-50 px-3 py-1 rounded border border-slate-100">
-              <div className="label-caps !text-[10px] mb-1">CRR</div>
-              <div className="font-mono font-black text-sm text-slate-700">{((statsA.runs / (statsA.balls / 6 || 1))).toFixed(2)}</div>
-           </div>
-           <div className="flex flex-wrap gap-1 items-center bg-white p-1 rounded max-w-[200px] justify-end">
-             {match.innings[0].overs.length > 0 && (
-               match.innings[0].overs[match.innings[0].overs.length - 1].balls.map((b, i) => (
-                 <BallBadge key={i} type={b.type} />
-               ))
-             )}
-           </div>
+        {/* Subtle Divider */}
+        <div className="border-t border-slate-50 sm:border-slate-100"></div>
+
+        {/* Score & Live Stats Section */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-8">
+          <div className="flex items-center gap-3 sm:gap-6 flex-wrap">
+            <div className="flex items-baseline gap-0.5 sm:gap-1">
+              <span className="text-4xl sm:text-8xl font-black leading-none tracking-tighter text-slate-900">{stats.runs}</span>
+              <span className="text-xl sm:text-5xl font-black text-slate-200 mx-1">/</span>
+              <span className="text-2xl sm:text-6xl font-black text-slate-900 leading-none">{stats.wickets}</span>
+            </div>
+            
+            <div className="flex items-center gap-1 sm:gap-4 ml-1 sm:ml-4">
+              <div className="flex flex-col items-center justify-center px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl bg-slate-50 border border-slate-100 min-w-[50px] sm:min-w-[80px]">
+                <span className="text-lg sm:text-3xl font-black text-slate-900 leading-none">{stats.overs}</span>
+                <span className="text-[6px] sm:text-[8px] font-black uppercase text-slate-400 tracking-widest mt-0.5 sm:mt-1">OVERS</span>
+              </div>
+
+              <div className="flex flex-col items-center justify-center px-3 py-1.5 sm:px-4 sm:py-2 min-w-[50px] sm:min-w-[80px] opacity-70">
+                <span className="text-lg sm:text-3xl font-black text-slate-500 leading-none">{(stats.runs / stats.effectiveOvers).toFixed(2)}</span>
+                <span className="text-[6px] sm:text-[8px] font-black uppercase text-slate-400 tracking-widest mt-0.5 sm:mt-1">CRR</span>
+              </div>
+            </div>
+          </div>
+
+          {!hideRecentTrackers && (
+            <div className="flex gap-1.5 sm:gap-2 flex-wrap items-center justify-end">
+              {recentBalls.map((ball, k) => (
+                <div 
+                  key={k} 
+                  className={cn(
+                    "w-7 h-7 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl flex items-center justify-center font-black text-[9px] sm:text-lg shadow-sm border-b-2 sm:border-b-4 transition-all",
+                    (ball.type === 'wide' || ball.type === 'no-ball') ? "bg-white border-orange-500 text-orange-500 border-2" :
+                    (ball.runs >= 4 || ball.runs === 6) ? "bg-orange-500 text-white border-orange-700" :
+                    (ball.runs > 0) ? "bg-blue-600 text-white border-blue-800" :
+                    ball.type === 'wicket' ? "bg-red-600 text-white border-red-800" :
+                    "bg-slate-300 text-white border-slate-400"
+                  )}
+                >
+                  {ball.type === 'wicket' ? 'W' : ball.type === 'dot' ? '0' : ball.type === 'wide' ? 'Wd' : ball.type === 'no-ball' ? 'Nb' : ball.type}
+                </div>
+              ))}
+              {recentBalls.length === 0 && (
+                <span className="text-[7px] sm:text-[9px] font-black uppercase text-slate-300 italic">Waiting for ball...</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -318,222 +443,136 @@ function StandingsTable({ tournament }: { tournament: any }) {
   );
 }
 
-function AwardsDashboard({ tournament }: { tournament: TournamentData }) {
+function AwardsSection({ tournament }: { tournament: TournamentData }) {
   const awards = getTournamentAwards(tournament);
-  
-  const AwardItem = ({ label, player, icon: Icon, color }: { label: string, player: any, icon: any, color: string }) => {
-    const team = tournament.teams.find(t => t.name === player?.team);
-    
-    return (
-      <div className={cn("p-4 rounded-xl border-t-4 bg-white shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow", color)}>
-        <div className="flex justify-between items-start mb-2">
-          <span className="label-caps !text-slate-400">{label}</span>
-          <Icon className="w-5 h-5 text-slate-200" />
-        </div>
-        <div className="flex items-end justify-between gap-2">
-          <div>
-            <p className="text-xl font-black uppercase text-slate-800 leading-none truncate">{player?.name || 'N/A'}</p>
-            <p className="text-[10px] font-black text-slate-400 mt-1 uppercase flex items-center gap-2">
-              {team?.logo && <img src={team.logo} className="w-5 h-5 object-contain" referrerPolicy="no-referrer" />}
-              {player?.team || 'TBD'}
-            </p>
-          </div>
-          {team?.logo && (
-            <div className="w-8 h-8 opacity-10 grayscale absolute right-4 bottom-4 pointer-events-none">
-              <img src={team.logo} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-            </div>
-          )}
-        </div>
+
+  const AwardCard = ({ title, player, color }: { title: string, player: any, color: string }) => (
+    <div className={cn("high-contrast-card overflow-hidden h-full flex flex-col group transition-all hover:scale-[1.02]", color)}>
+      <div className="p-3 bg-white/10 backdrop-blur-sm flex justify-between items-center border-b border-white/5">
+        <span className="text-[10px] md:text-xs font-black uppercase tracking-widest text-white">{title}</span>
+        <Trophy className="w-4 h-4 text-white/50 group-hover:text-yellow-400 transition-colors" />
       </div>
-    );
-  };
+      <div className="p-4 flex-1 flex flex-col justify-center min-h-[100px]">
+        {player ? (
+           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+              <p className="text-xl md:text-2xl font-black uppercase text-white leading-tight mb-1 break-words">{player.name}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[9px] font-bold uppercase py-0.5 px-2 bg-white/20 rounded text-white">{player.team}</span>
+                <span className="text-[9px] font-black uppercase text-yellow-300 tracking-wider bg-black/20 px-2 py-0.5 rounded italic">{player.reason}</span>
+              </div>
+           </motion.div>
+        ) : (
+          <p className="text-white/30 font-black uppercase text-sm italic">N/A</p>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-800 border-l-4 border-amber-500 pl-4">Tournament Honours</h2>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <AwardItem 
-          label="Player of the Series - Male" 
-          player={awards.playerOfSeriesMale} 
-          icon={Trophy} 
-          color="border-blue-600" 
-        />
-        <AwardItem 
-          label="Player of the Series - Female" 
-          player={awards.playerOfSeriesFemale} 
-          icon={Trophy} 
-          color="border-pink-500" 
-        />
-        <AwardItem 
-          label="Best Batsman - Male" 
-          player={awards.bestBatsmanMale} 
-          icon={Trophy} 
-          color="border-amber-500" 
-        />
-        <AwardItem 
-          label="Best Batsman - Female" 
-          player={awards.bestBatsmanFemale} 
-          icon={Trophy} 
-          color="border-pink-400" 
-        />
-        <AwardItem 
-          label="Best Bowler - Male" 
-          player={awards.bestBowlerMale} 
-          icon={Trophy} 
-          color="border-emerald-600" 
-        />
-        <AwardItem 
-          label="Best Bowler - Female" 
-          player={awards.bestBowlerFemale} 
-          icon={Trophy} 
-          color="border-rose-400" 
-        />
-         <AwardItem 
-          label="Man of the Match - Finale" 
-          player={{ name: awards.manOfTheMatchFinale, team: 'Grand Finalist' }} 
-          icon={Trophy} 
-          color="border-slate-900" 
-        />
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-black uppercase tracking-tighter text-slate-900 leading-none">Tournament Honours</h2>
+      </div>
+      
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <AwardCard title="Man of the Tournament" player={awards.playerOfSeriesMale} color="bg-slate-900" />
+        <AwardCard title="Woman of the Tournament" player={awards.playerOfSeriesFemale} color="bg-rose-600" />
+        <AwardCard title="Best Batsman (M)" player={awards.bestBatsmanMale} color="bg-blue-600" />
+        <AwardCard title="Best Batsman (F)" player={awards.bestBatsmanFemale} color="bg-pink-600" />
+        <AwardCard title="Best Bowler (M)" player={awards.bestBowlerMale} color="bg-emerald-600" />
+        <AwardCard title="Best Bowler (F)" player={awards.bestBowlerFemale} color="bg-emerald-500" />
+        <div className="sm:col-span-2 lg:col-span-3">
+           <AwardCard title="Man of the Match - Grand Finale" player={awards.manOfTheMatchFinale !== 'N/A' ? { name: awards.manOfTheMatchFinale, team: 'Finale Star', reason: 'Grand Finale Hero' } : null} color="bg-amber-500" />
+        </div>
       </div>
     </div>
   );
 }
 
-function TournamentTree({ tournament, setData, onSelect }: { tournament: TournamentData, setData: (d: any) => void, onSelect: (idx: number) => void }) {
-  const matches = tournament.matches || [];
-  const teams = tournament.teams || [];
-  
-  const quarters = [matches[8], matches[9], matches[10], matches[11]];
-  const semis = [matches[12], matches[13]];
-  const final = matches[14];
+function TournamentTree({ tournament, onSelect }: { tournament: TournamentData, onSelect: (idx: number) => void }) {
+  const allFixtures = (tournament.matches || []).filter(m => m && !['m13', 'm14', 'm15'].includes(m.id)).sort((a, b) => {
+    const numA = parseInt(a.id.replace(/\D/g, '')) || 0;
+    const numB = parseInt(b.id.replace(/\D/g, '')) || 0;
+    return numA - numB;
+  });
+  const semis = (tournament.matches || []).filter(m => m && ['m13', 'm14'].includes(m.id));
+  const final = (tournament.matches || []).find(m => m && m.id === 'm15');
 
-  const MatchNode = ({ match, label, championship = false }: { match: Match | undefined, label: string, championship?: boolean }) => {
-    if (!match) return null;
-    const actualIdx = tournament.matches.findIndex(m => m.id === match.id);
-
+  const MatchMiniNode = ({ match }: { match: Match | undefined, key?: string }) => {
+    if (!match) return <div className="bg-slate-100 border border-slate-200 p-2 rounded-lg h-16 w-full animate-pulse" />;
+    const idx = tournament.matches.findIndex(m => m.id === match.id);
+    const teamA = tournament.teams.find(t => t.id === match.teamA);
+    const teamB = tournament.teams.find(t => t.id === match.teamB);
     return (
-      <div className={cn("flex flex-col gap-0.5", championship ? "w-56" : "w-36")}>
-        <div className="bg-slate-800/90 px-2 py-0.5 rounded-t-md flex justify-between items-center border-t border-x border-white/10">
-          <span className="text-[6px] font-black uppercase text-slate-400 tracking-widest truncate">{label}</span>
-          <button onClick={() => onSelect(actualIdx)} className="text-[5px] text-blue-400 hover:text-white uppercase font-black">Score</button>
+      <div 
+        onClick={() => onSelect(idx)}
+        className="bg-white border-2 border-slate-200 p-2 rounded-xl hover:border-blue-600 hover:shadow-lg transition-all cursor-pointer group flex flex-col gap-1 w-full"
+      >
+        <div className="flex justify-between items-center px-1 border-b border-slate-50 pb-1">
+          <span className="text-[7px] font-black text-slate-400 uppercase leading-none">{match.id}</span>
+          <span className={cn(
+             "text-[6px] font-black uppercase leading-none",
+             match.status === 'live' ? "text-red-600 animate-pulse" : 
+             match.status === 'completed' ? "text-blue-600" : "text-slate-400"
+          )}>{match.status}</span>
         </div>
-        <div className="flex flex-col gap-px bg-slate-700/50 rounded-b-md overflow-hidden border border-white/5">
-          {[
-            { id: match.teamA, key: 'teamA' as const, color: 'border-blue-500' },
-            { id: match.teamB, key: 'teamB' as const, color: 'border-emerald-500' }
-          ].map((slot) => {
-            const team = teams.find(t => t.id === slot.id);
-            return (
-              <div key={slot.key} className={cn("flex items-center bg-slate-900 h-8 px-2 border-l-2 hover:bg-slate-800 transition-colors relative group", slot.color)}>
-                 {team?.logo ? (
-                   <img src={team.logo} className="w-6 h-6 object-contain mr-2" referrerPolicy="no-referrer" />
-                 ) : (
-                   <div className="w-6 h-6 bg-slate-800 rounded flex items-center justify-center mr-2"><div className="w-1 h-1 bg-white/10 rounded-full"></div></div>
-                 )}
-                 <select
-                   value={slot.id || ''}
-                   onChange={(e) => {
-                      const newMatches = [...tournament.matches];
-                      newMatches[actualIdx] = { ...newMatches[actualIdx], [slot.key]: e.target.value };
-                      setData({ ...tournament, matches: newMatches });
-                   }}
-                   className="flex-1 bg-transparent text-[8px] font-black uppercase text-white outline-none cursor-pointer appearance-none pr-4"
-                 >
-                   <option value="" className="bg-slate-900">SELECT</option>
-                   {teams.map(t => <option key={t.id} value={t.id} className="bg-slate-900">{t.name}</option>)}
-                 </select>
-                 <ChevronRight className="w-2 h-2 text-white/20 absolute right-1 group-hover:text-white/60 transition-colors" />
-              </div>
-            );
-          })}
+        <div className="space-y-1 py-1">
+          {[teamA, teamB].map((t, i) => (
+            <div key={i} className="flex items-center gap-2">
+              {t?.logo ? <img src={t.logo} className="w-5 h-5 object-contain" /> : <div className="w-5 h-5 bg-slate-100 rounded-sm" />}
+              <span className="text-[10px] font-black uppercase text-slate-900 leading-none">{t?.name || 'TBD'}</span>
+            </div>
+          ))}
         </div>
       </div>
     );
   };
 
   return (
-    <div className="relative bg-[#070b14] rounded-[32px] p-6 lg:p-12 border-4 border-slate-900 overflow-hidden shadow-3xl">
-       {/* High-Tech Background Decor */}
-       <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 blur-[120px] rounded-full"></div>
-       <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/5 blur-[120px] rounded-full"></div>
-
-       <div className="relative z-10 flex flex-col items-center">
-          <div className="mb-12 text-center">
-             <h2 className="text-3xl font-black italic text-white tracking-tight flex items-center justify-center gap-4">
-                TOURNAMENT <span className="text-blue-500">SCHEDULE</span>
-             </h2>
-             <div className="h-0.5 w-16 bg-blue-500 mx-auto mt-2 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]"></div>
+    <div className="relative bg-white rounded-[32px] p-6 lg:p-12 border-4 border-slate-100 overflow-hidden min-h-[800px] shadow-sm">
+       {/* Background Grid */}
+       <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[linear-gradient(to_right,#000_1px,transparent_1px),linear-gradient(to_bottom,#000_1px,transparent_1px)] bg-[size:20px_20px]"></div>
+       
+       <div className="relative z-10 flex flex-col items-center gap-12">
+          
+          <div className="w-full">
+            <div className="text-center mb-8">
+              <span className="bg-slate-900 text-white text-[10px] font-black px-6 py-2 rounded-full uppercase tracking-widest shadow-xl">Tournament Fixtures</span>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {allFixtures.map(m => (
+                <MatchMiniNode key={m.id} match={m} />
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-5 items-center w-full max-w-5xl">
-             {/* Left Quarters */}
-             <div className="flex flex-col gap-16">
-                <MatchNode match={quarters[0]} label="QUARTER-FINAL 01" />
-                <MatchNode match={quarters[1]} label="QUARTER-FINAL 02" />
-             </div>
-
-             {/* Connector 1 */}
-             <div className="flex items-center justify-center">
-                <div className="w-8 h-40 border-y-2 border-r-2 border-white/5 rounded-r-2xl relative left-2">
-                   <div className="absolute top-1/2 -right-4 w-4 h-0.5 bg-white/5"></div>
+          <div className="w-full flex flex-col items-center gap-8">
+             <div className="h-1 w-24 bg-slate-100 rounded-full"></div>
+             
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-12 w-full max-w-4xl">
+                <div className="space-y-4">
+                   <div className="text-center font-black text-[9px] text-slate-400 uppercase tracking-widest bg-slate-50 py-1 rounded-full">Semi Final 01</div>
+                   <MatchMiniNode match={semis[0]} />
+                </div>
+                <div className="space-y-4">
+                   <div className="text-center font-black text-[9px] text-slate-400 uppercase tracking-widest bg-slate-50 py-1 rounded-full">Semi Final 02</div>
+                   <MatchMiniNode match={semis[1]} />
                 </div>
              </div>
 
-             {/* Semis & Finals */}
-             <div className="flex flex-col items-center gap-16">
-                <MatchNode match={semis[0]} label="SEMI-FINAL 01" />
-                
-                <div className="relative flex flex-col items-center py-10">
-                   <div className="absolute -top-6 animate-bounce">
-                      <Trophy className="w-16 h-16 text-yellow-500 drop-shadow-[0_0_15px_rgba(234,179,8,0.3)]" />
-                   </div>
-                   <MatchNode match={final} label="CHAMPIONSHIP FINALE" championship />
-                   <div className="mt-4 px-8 py-1.5 bg-yellow-500 rounded-full shadow-lg">
-                      <span className="text-[10px] font-black uppercase text-slate-900 tracking-[0.3em]">CHAMPION</span>
-                   </div>
+             <div className="flex flex-col items-center justify-center py-12 w-full max-w-sm">
+                <div className="absolute w-64 h-64 bg-yellow-500/10 blur-[100px] rounded-full pointer-events-none"></div>
+                <Trophy className="w-20 h-20 text-yellow-500 mb-6 drop-shadow-2xl animate-bounce" />
+                <div className="w-full shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] transform -rotate-1">
+                   <MatchMiniNode match={final} />
                 </div>
-
-                <MatchNode match={semis[1]} label="SEMI-FINAL 02" />
-             </div>
-
-             {/* Connector 2 */}
-             <div className="flex items-center justify-center">
-                <div className="w-8 h-40 border-y-2 border-l-2 border-white/5 rounded-l-2xl relative right-2">
-                   <div className="absolute top-1/2 -left-4 w-4 h-0.5 bg-white/5"></div>
+                <div className="mt-6 bg-blue-600 px-10 py-3 rounded-2xl shadow-xl border-b-4 border-blue-800">
+                   <span className="text-[12px] font-black text-white uppercase tracking-[0.3em]">Grand Finale Winner</span>
                 </div>
-             </div>
-
-             {/* Right Quarters */}
-             <div className="flex flex-col gap-16 items-end">
-                <MatchNode match={quarters[2]} label="QUARTER-FINAL 03" />
-                <MatchNode match={quarters[3]} label="QUARTER-FINAL 04" />
              </div>
           </div>
-       </div>
 
-       {/* Pool Standings Summary - Ultra Compact */}
-       <div className="grid grid-cols-4 gap-4 mt-12 pt-8 border-t border-white/5">
-          {['A', 'B'].map((group) => (
-             <React.Fragment key={group}>
-                {[1, 2].map((num) => {
-                   const gKey = `${group}${num}`;
-                   const poolTeams = teams.filter(t => t.group === group).slice((num-1)*2, num*2);
-                   return (
-                      <div key={gKey} className="bg-slate-900/40 p-2 rounded-xl border border-white/5">
-                         <div className="text-[7px] font-black uppercase text-slate-500 mb-2 tracking-widest text-center">Group Pool {gKey}</div>
-                         <div className="space-y-1">
-                            {poolTeams.map((t, idx) => (
-                               <div key={idx} className="bg-slate-950/50 p-1.5 rounded-lg flex items-center gap-2 border border-white/5">
-                                  {t.logo && <img src={t.logo} className="w-4 h-4 object-contain" referrerPolicy="no-referrer" />}
-                                  <span className="text-[7px] font-black uppercase text-white/80 truncate">{t.name}</span>
-                               </div>
-                            ))}
-                         </div>
-                      </div>
-                   )
-                })}
-             </React.Fragment>
-          ))}
        </div>
     </div>
   );
@@ -568,7 +607,7 @@ function MatchGrid({ tournament, onSelect }: { tournament: TournamentData, onSel
                 <span className={cn(
                   "px-1.5 py-0.5 rounded text-[7px] font-black uppercase",
                   match.status === 'live' ? "bg-red-500 text-white animate-pulse" : 
-                  match.status === 'completed' ? "bg-slate-200 text-slate-600" : "bg-slate-100 text-slate-500"
+                  match.status === 'completed' ? "text-blue-600 bg-transparent px-0" : "bg-slate-100 text-slate-500"
                 )}>
                   {match.status}
                 </span>
@@ -609,32 +648,76 @@ function MatchGrid({ tournament, onSelect }: { tournament: TournamentData, onSel
   );
 }
 
-function ScorerPanel({ match, onUpdate, tournament, onComplete }: { match: Match, onUpdate: (m: Match) => void, tournament: any, onComplete: (res: string) => void }) {
+function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, onInningOverride, activePlayers }: { match: Match, onUpdate: (m: Match) => void, tournament: any, onComplete: (res: string) => void, inningOverride?: number | null, onInningOverride?: (idx: number | null) => void, activePlayers?: {striker: string, nonStriker: string} }) {
   if (!match) return (
     <div className="p-8 text-center bg-white rounded-2xl border-4 border-dashed border-slate-200">
-      <p className="text-xl font-black uppercase text-slate-300">No match selected for scoring</p>
+      <p className="text-xl font-black uppercase text-slate-300 italic">No Match Active</p>
     </div>
   );
   
   const teamA = tournament.teams.find((t: any) => t.id === match.teamA);
   const teamB = tournament.teams.find((t: any) => t.id === match.teamB);
   
-  const [striker, setStriker] = useState(teamA?.players?.[0] || 'Striker');
-  const [nonStriker, setNonStriker] = useState(teamA?.players?.[1] || 'Non-Striker');
-  const [bowler, setBowler] = useState(teamB?.players?.[0] || 'Bowler');
+  // Decide which inning is active (0 if inning 0 not full, else 1)
+  const stats0 = calculateInningsStats(match, 0);
+  const autoInningIndex = (stats0.balls >= 28 || stats0.wickets >= 5) ? 1 : 0;
+  
+  const activeInningIndex = inningOverride !== undefined && inningOverride !== null ? inningOverride : autoInningIndex;
+  
+  const battingTeam = activeInningIndex === 0 ? teamA : teamB;
+  const bowlingTeam = activeInningIndex === 0 ? teamB : teamA;
+
+  const outPlayers = useMemo(() => {
+    const currentInning = match.innings[activeInningIndex];
+    if (!currentInning) return [];
+    return currentInning.overs.flatMap((o: any) => o.balls)
+      .filter((b: any) => b.type === 'wicket' && b.wicket?.player)
+      .map((b: any) => b.wicket.player);
+  }, [match, activeInningIndex]);
+
+  const [strikerName, setStrikerName] = useState(activePlayers?.striker || battingTeam?.players?.[0]?.name || '');
+  const [nonStrikerName, setNonStrikerName] = useState(activePlayers?.nonStriker || battingTeam?.players?.[1]?.name || '');
+  const [bowlerName, setBowlerName] = useState(bowlingTeam?.players?.[0]?.name || '');
+
+  // Handle player updates when inning switches
+  useEffect(() => {
+    if (activePlayers) {
+      setStrikerName(activePlayers.striker);
+      setNonStrikerName(activePlayers.nonStriker);
+    } else {
+      setStrikerName(battingTeam?.players?.[0]?.name || '');
+      setNonStrikerName(battingTeam?.players?.[1]?.name || '');
+    }
+    setBowlerName(bowlingTeam?.players?.[0]?.name || '');
+  }, [activeInningIndex, activePlayers?.striker, activePlayers?.nonStriker, battingTeam, bowlingTeam]);
 
   const handleBall = (type: RunType) => {
-    const updatedMatch = { ...match };
-    const currentInning = updatedMatch.innings[0];
-    
-    const lastOverIndex = currentInning.overs.length - 1;
-    const lastOverRef = currentInning.overs[lastOverIndex];
-    const legalBallsCount = lastOverRef ? lastOverRef.balls.filter(b => b.type !== 'wide' && b.type !== 'no-ball').length : 0;
+    const updatedMatch = JSON.parse(JSON.stringify(match));
+    const currentInning = updatedMatch.innings[activeInningIndex];
+    if (!currentInning) return;
 
-    if (currentInning.overs.length === 0 || legalBallsCount === 6) {
+    // Use current state for the ball being bowled
+    const currentStriker = strikerName;
+    const currentNonStriker = nonStrikerName;
+    const currentBowler = bowlerName;
+
+    // RULE: Calculate active legal balls count
+    const lastOverIdx = currentInning.overs.length > 0 ? currentInning.overs.length - 1 : 0;
+    const lastOverRef = currentInning.overs[lastOverIdx];
+    const legalBallsCount = lastOverRef ? lastOverRef.balls.filter((b: any) => b.type !== 'wide' && b.type !== 'no-ball').length : 0;
+
+    // RULE 1: First Over (Index 0) has only 4 legal balls
+    const maxLegalBallsForOver = (currentInning.overs.length <= 1 && (currentInning.overs.length === 0 || legalBallsCount < 4)) ? 4 : 6;
+    
+    // Check if we need to start a NEW over
+    // If no overs exist yet OR if current over is finished (4 for first, 6 for others)
+    const currentOverNeedsPush = currentInning.overs.length === 0 || (currentInning.overs.length === 1 && legalBallsCount === 4) || (currentInning.overs.length > 1 && legalBallsCount === 6);
+
+    if (currentOverNeedsPush) {
+      if (currentInning.overs.length >= 5) return; // Each team has only 5 overs
       currentInning.overs.push({
         number: currentInning.overs.length,
-        bowler: bowler,
+        bowler: bowlerName,
         balls: []
       });
     }
@@ -643,106 +726,243 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete }: { match: Match
     let actualRuns = 0;
     let actualExtras = 0;
 
-    if (type === 'wide') actualExtras = 4;
-    else if (type === 'no-ball') actualExtras = 1;
-    else if (type !== 'wicket' && type !== 'dot') actualRuns = parseInt(type);
+    // Basic scoring
+    if (type !== 'wicket' && type !== 'dot' && type !== 'wide' && type !== 'no-ball') {
+      actualRuns = parseInt(type);
+    }
+
+    // RULE 2: No-ball score = 4
+    if (type === 'no-ball') actualExtras = 4;
+    else if (type === 'wide') actualExtras = 4; // Default extra is 4 runs as previously established
+    
+    // RULE 3: First over Wide/NB = 2 runs
+    const currentOverRealNumber = currentInning.overs.length;
+    if (currentOverRealNumber === 1 && (type === 'wide' || type === 'no-ball')) {
+      actualExtras = 2;
+    }
+
+    // RULE 4: Last 2 balls of each team's inning (from 26 total legal balls): Wide/NB = 2 runs
+    const totalLegal = currentInning.overs.reduce((acc: number, o: any) => acc + o.balls.filter((b: any) => b.type !== 'wide' && b.type !== 'no-ball').length, 0);
+    if (totalLegal >= 26 && (type === 'wide' || type === 'no-ball')) {
+      actualExtras = 2;
+    }
 
     lastOver.balls.push({
       id: Math.random().toString(36).substr(2, 9),
       type,
       runs: actualRuns,
       extras: actualExtras,
-      striker: striker,
-      nonStriker: nonStriker,
-      bowler: bowler,
-      wicket: type === 'wicket' ? { player: striker, type: 'bowled' } : undefined
+      striker: currentStriker,
+      nonStriker: currentNonStriker,
+      bowler: currentBowler,
+      wicket: type === 'wicket' ? { player: currentStriker, type: 'bowled' } : undefined
     });
+
+    let nextStriker = currentStriker;
+    let nextNonStriker = currentNonStriker;
+
+    // RULE 5: Striker Rotation on 1 or 3 runs
+    if (actualRuns === 1 || actualRuns === 3) {
+      nextStriker = currentNonStriker;
+      nextNonStriker = currentStriker;
+    }
+
+    // RULE 6: Over rotation when over completes
+    const completedLegalBalls = lastOver.balls.filter((b: any) => b.type !== 'wide' && b.type !== 'no-ball').length;
+    const requiredLevelBalls = lastOver.number === 0 ? 4 : 6;
+    if (completedLegalBalls === requiredLevelBalls) {
+      const temp = nextStriker;
+      nextStriker = nextNonStriker;
+      nextNonStriker = temp;
+    }
+
+    setStrikerName(nextStriker);
+    setNonStrikerName(nextNonStriker);
     
     onUpdate(updatedMatch);
   };
 
+  const swapStrikers = () => {
+    const temp = strikerName;
+    setStrikerName(nonStrikerName);
+    setNonStrikerName(temp);
+  };
+
   return (
-    <div className="mt-4 p-4 high-contrast-card bg-slate-50 border-slate-900">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-lg font-black uppercase text-slate-800">Scoring Controls</h3>
-        <button 
-           onClick={() => {
-             const statsA = calculateInningsStats(match, 0);
-             const statsB = calculateInningsStats(match, 1);
-             const winner = statsA.runs > statsB.runs ? tournament.teams.find((t: any) => t.id === match.teamA)?.name : tournament.teams.find((t: any) => t.id === match.teamB)?.name;
-             onComplete(`${winner} won by ${Math.abs(statsA.runs - statsB.runs)} runs`);
-           }}
-           className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-[11px] font-black uppercase shadow-md active:scale-95 transition-all"
-        >
-          Finish & Close Match
-        </button>
-      </div>
-      <div className="grid grid-cols-3 gap-4 mb-4 pb-4 border-b border-slate-200">
-        <div>
-          <label className="manage-label-sm">On Strike</label>
-          <select 
-            value={striker} 
-            onChange={(e) => setStriker(e.target.value)}
-            className="w-full bg-white border border-slate-200 p-1.5 rounded text-[12px] font-bold"
-          >
-            {teamA?.players?.map((p: any) => <option key={p.name} value={p.name}>{p.name}</option>)}
-          </select>
+    <div className="mt-4 p-4 high-contrast-card bg-slate-50 border-slate-900 border-2">
+      <div className="flex flex-col lg:flex-row gap-8">
+        <div className="flex-1">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <div className="flex flex-col">
+              <h3 className="text-xl font-black uppercase text-slate-900 tracking-tighter">Match Scoring Center</h3>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-[10px] font-bold uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full w-fit">Inning {activeInningIndex + 1}: {battingTeam?.name} Batting</p>
+                <button 
+                  onClick={() => onInningOverride?.(activeInningIndex === 0 ? 1 : 0)}
+                  className="text-[8px] font-black uppercase bg-blue-600 text-white px-2 py-1 rounded-full transition-all shadow-[0_2px_0_0_#1e40af] active:translate-y-[1px]"
+                >
+                  SWAP INNING
+                </button>
+              </div>
+            </div>
+            <button 
+               onClick={() => {
+                 const statsA = calculateInningsStats(match, 0);
+                 const statsB = calculateInningsStats(match, 1);
+                 const winner = statsA.runs > statsB.runs ? teamA?.name : teamB?.name;
+                 onComplete(`${winner} won by ${Math.abs(statsA.runs - statsB.runs)} runs`);
+               }}
+               className="w-full sm:w-auto bg-emerald-600 text-white px-6 py-2.5 rounded-xl text-[11px] font-black uppercase shadow-[0_4px_0_0_#059669] active:translate-y-[2px] transition-all"
+            >
+              Finish Match
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 pt-4 border-t border-slate-200">
+            <div className="space-y-1">
+              <div className="flex justify-between items-center">
+                <label className="text-[9px] font-black uppercase text-slate-500 underline decoration-blue-500 decoration-2">STRIKER</label>
+                <button onClick={swapStrikers} className="text-[8px] font-black uppercase bg-blue-600 text-white px-2 py-0.5 rounded">SWAP</button>
+              </div>
+              <select 
+                value={strikerName} 
+                onChange={(e) => setStrikerName(e.target.value)}
+                className="w-full bg-white border-2 border-slate-200 p-2 rounded-xl text-[12px] font-black uppercase shadow-sm focus:border-blue-600 outline-none"
+              >
+                {battingTeam?.players?.map((p: any) => {
+                  const isOut = outPlayers.includes(p.name);
+                  return <option key={p.name} value={p.name} disabled={isOut} className={isOut ? "text-slate-400 bg-slate-100" : ""}>{p.name.toUpperCase()} {isOut ? '(OUT)' : ''}</option>
+                })}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black uppercase text-slate-500 underline decoration-slate-300 decoration-2">NON-STRIKER</label>
+              <select 
+                value={nonStrikerName} 
+                onChange={(e) => setNonStrikerName(e.target.value)}
+                className="w-full bg-white border-2 border-slate-200 p-2 rounded-xl text-[12px] font-black uppercase shadow-sm focus:border-blue-600 outline-none"
+              >
+                {battingTeam?.players?.map((p: any) => {
+                  const isOut = outPlayers.includes(p.name);
+                  return <option key={p.name} value={p.name} disabled={isOut} className={isOut ? "text-slate-400 bg-slate-100" : ""}>{p.name.toUpperCase()} {isOut ? '(OUT)' : ''}</option>
+                })}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black uppercase text-slate-500">BOWLER</label>
+              <select 
+                value={bowlerName} 
+                onChange={(e) => setBowlerName(e.target.value)}
+                className="w-full bg-white border-2 border-slate-200 p-2 rounded-xl text-[12px] font-black uppercase shadow-sm focus:border-blue-600 outline-none"
+              >
+                {bowlingTeam?.players?.map((p: any) => <option key={p.name} value={p.name}>{p.name.toUpperCase()}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center mb-4">
+            <div className="text-[10px] font-black uppercase text-slate-400 tracking-widest bg-white px-3 py-1 rounded-full border border-slate-100 italic">OFFICIAL SCORE INPUT</div>
+            <button 
+              onClick={() => {
+                 const updatedMatch = JSON.parse(JSON.stringify(match));
+                 const currentInning = updatedMatch.innings[activeInningIndex];
+                 const lastOver = currentInning.overs[currentInning.overs.length - 1];
+                 if (lastOver?.balls.length > 0) {
+                   lastOver.balls.pop();
+                   if (lastOver.balls.length === 0) currentInning.overs.pop();
+                   onUpdate(updatedMatch);
+                 }
+              }}
+              className="text-[11px] font-black uppercase text-rose-500 border border-rose-100 bg-rose-50 px-4 py-1 rounded-xl hover:bg-rose-100 active:scale-95 transition-all"
+            >
+              CORRECTION (UNDO)
+            </button>
+          </div>
+
+          <div className="grid grid-cols-3 sm:grid-cols-9 gap-3">
+            {(['dot', '1', '2', '3', '4', '6', 'wide', 'no-ball', 'wicket'] as const).map((type) => (
+              <button
+                key={type}
+                onClick={() => handleBall(type)}
+                className={cn(
+                  "flex flex-col items-center justify-center aspect-square bg-white border-2 border-slate-200 hover:border-slate-900 rounded-2xl transition-all shadow-sm active:scale-90",
+                  type === 'wicket' && "border-rose-400 bg-rose-50 text-rose-600",
+                  (type === '4' || type === '6') && "border-amber-400 bg-amber-50 text-amber-700"
+                )}
+              >
+                <BallBadge type={type} />
+                <span className="text-[10px] font-black uppercase mt-1.5">{type}</span>
+              </button>
+            ))}
+          </div>
         </div>
-        <div>
-          <label className="manage-label-sm">Non-Striker</label>
-          <select 
-            value={nonStriker} 
-            onChange={(e) => setNonStriker(e.target.value)}
-            className="w-full bg-white border border-slate-200 p-1.5 rounded text-[12px] font-bold"
-          >
-            {teamA?.players?.map((p: any) => <option key={p.name} value={p.name}>{p.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="manage-label-sm">Bowler</label>
-          <select 
-            value={bowler} 
-            onChange={(e) => setBowler(e.target.value)}
-            className="w-full bg-white border border-slate-200 p-1.5 rounded text-[12px] font-bold"
-          >
-            {teamB?.players?.map((p: any) => <option key={p.name} value={p.name}>{p.name}</option>)}
-          </select>
+
+        {/* Side Ball Tracker */}
+        <div className="w-full lg:w-40 bg-white/50 p-3 rounded-2xl border-2 border-slate-200 flex flex-col shrink-0">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-[9px] font-black uppercase text-slate-500 tracking-widest italic flex items-center gap-2">
+              <Circle className="w-2 h-2 text-blue-600 fill-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.4)]" /> Tracker
+            </h4>
+          </div>
+          <div className="space-y-4 max-h-[300px] overflow-y-auto no-scrollbar pr-1">
+            {match.innings[activeInningIndex]?.overs.map((over, oidx) => (
+              <div key={oidx} className="space-y-1">
+                <div className="flex justify-between items-center px-0.5">
+                  <span className="text-[7px] font-black text-slate-400 uppercase">OVER {oidx+1}</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {over.balls.map((ball, bidx) => (
+                    <div 
+                      key={bidx} 
+                      className={cn(
+                        "w-5 h-5 rounded-[2px] flex items-center justify-center text-[7px] font-black text-white shrink-0 shadow-sm",
+                        ball.type === 'dot' ? "bg-slate-300" :
+                        ball.type === 'wicket' ? "bg-rose-500" :
+                        (ball.type === '4' || ball.type === '6') ? "bg-amber-500" :
+                        (ball.type === 'wide' || ball.type === 'no-ball') ? "bg-blue-400" : "bg-blue-600"
+                      )}
+                    >
+                      {ball.type === 'wicket' ? 'W' : 
+                       ball.type === 'wide' ? 'Wd' : 
+                       ball.type === 'no-ball' ? 'Nb' : 
+                       ball.type === 'dot' ? '0' : ball.type}
+                    </div>
+                  ))}
+                  {/* Empty dots for legal balls */}
+                  {Array.from({ length: Math.max(0, (oidx === 0 ? 4 : 6) - over.balls.filter((b: any) => b.type !== 'wide' && b.type !== 'no-ball').length) }).map((_, i) => (
+                    <div key={`empty-${i}`} className="w-5 h-5 bg-slate-100 border border-slate-200 rounded-[2px] opacity-40"></div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="flex justify-between items-center mb-4">
-        <div className="label-caps !text-[11px]">Tap to Score</div>
-        <button 
-          onClick={() => {
-             const updatedMatch = { ...match };
-             const currentInning = updatedMatch.innings[0];
-             const lastOver = currentInning.overs[currentInning.overs.length - 1];
-             if (lastOver?.balls.length > 0) {
-               lastOver.balls.pop();
-               if (lastOver.balls.length === 0) currentInning.overs.pop();
-               onUpdate(updatedMatch);
-             }
-          }}
-          className="text-[11px] font-black uppercase text-red-500 hover:text-red-700 underline"
-        >
-          Undo
-        </button>
-      </div>
-      <div className="grid grid-cols-4 sm:grid-cols-9 gap-2">
-        {(['dot', '1', '2', '3', '4', '6', 'wide', 'no-ball', 'wicket'] as const).map((type) => (
-          <button
-            key={type}
-            onClick={() => handleBall(type)}
-            className={cn(
-              "flex flex-col items-center justify-center aspect-square bg-white border border-slate-200 hover:bg-slate-900 hover:text-white rounded-lg transition-all shadow-sm active:scale-95",
-              type === 'wicket' && "border-rose-200 bg-rose-50/30",
-              (type === '4' || type === '6') && "border-amber-200 bg-amber-50/30"
-            )}
-          >
-            <BallBadge type={type} />
-            <span className="text-[10px] font-black uppercase mt-1 opacity-60">{type}</span>
-          </button>
-        ))}
+      {/* 10-Over Box Visual */}
+      <div className="mt-8 pt-6 border-t border-slate-200">
+         <div className="flex items-center gap-2 mb-4">
+            <BarChart3 className="w-4 h-4 text-blue-600" />
+            <h4 className="text-[11px] font-black uppercase text-slate-800 tracking-wider font-mono italic">ROUND PROGRESS (10 OVERS TOTAL)</h4>
+         </div>
+         <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
+            {[...(match.innings[0]?.overs || []), ...(match.innings[1]?.overs || [])].map((over, idx) => (
+               <div key={idx} className={cn(
+                 "p-2 rounded-xl flex flex-col items-center border-2 transition-all",
+                 idx < (match.innings[0]?.overs.length || 0) ? "bg-blue-50 border-blue-100" : "bg-emerald-50 border-emerald-100"
+               )}>
+                  <span className="text-[9px] font-black text-slate-400 leading-none mb-1">O{idx+1}</span>
+                  <span className="text-[12px] font-black text-slate-900 leading-none">
+                    {over.balls.reduce((acc: number, b: any) => acc + b.runs + b.extras, 0)}
+                  </span>
+               </div>
+            ))}
+            {Array.from({ length: 10 - ([...(match.innings[0]?.overs || []), ...(match.innings[1]?.overs || [])].length) }).map((_, i) => (
+               <div key={`empty-${i}`} className="p-2 rounded-xl flex flex-col items-center border-2 border-dashed border-slate-200 opacity-30">
+                  <span className="text-[9px] font-black text-slate-400">-</span>
+               </div>
+            ))}
+         </div>
       </div>
     </div>
   );
@@ -822,58 +1042,98 @@ function ManagementPanel({ data, setData }: { data: TournamentData, setData: (d:
     });
   };
 
+  const addMatch = () => {
+    const newMatch: Match = {
+      id: `m${data.matches.length + 1}`,
+      title: `Match ${data.matches.length + 1}`,
+      status: 'upcoming',
+      teamA: '',
+      teamB: '',
+      date: new Date().toLocaleDateString(),
+      innings: [
+        { teamId: '', battingOrder: [], overs: [] },
+        { teamId: '', battingOrder: [], overs: [] }
+      ]
+    };
+    setData({ ...data, matches: [...data.matches, newMatch] });
+  };
+
+  const deleteMatch = (id: string) => {
+    setData({ ...data, matches: data.matches.filter(m => m.id !== id) });
+  };
+
   return (
     <div className="space-y-6 pb-24 max-w-5xl mx-auto">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Tournament Info */}
-        <div className="high-contrast-card p-3 bg-white md:col-span-1 border-blue-100">
-           <div className="flex items-center gap-4">
-             <ImageUpload 
-                currentImage={data.config.logo} 
-                onImageSelect={(b) => setData({...data, config: {...data.config, logo: b}})} 
-                label="Main Logo" 
-             />
-             <div className="flex-1">
-                <span className="manage-label-sm">Tournament Title</span>
-                <input 
-                  value={data.config.tournamentName} 
-                  onChange={(e) => setData({ ...data, config: { ...data.config, tournamentName: e.target.value }})}
-                  className="bg-transparent border-b border-slate-200 font-black uppercase text-xs w-full outline-none focus:border-blue-600 transition-colors py-1"
-                />
-             </div>
+        <div className="high-contrast-card p-3 bg-white border-blue-100 flex items-center gap-4">
+           <ImageUpload 
+              currentImage={data.config.logo} 
+              onImageSelect={(b) => setData({...data, config: {...data.config, logo: b}})} 
+              label="Main Logo" 
+           />
+           <div className="flex-1">
+              <span className="manage-label-sm">Tournament Title</span>
+              <input 
+                value={data.config.tournamentName} 
+                onChange={(e) => setData({ ...data, config: { ...data.config, tournamentName: e.target.value }})}
+                className="bg-transparent border-b border-slate-200 font-black uppercase text-xs w-full outline-none focus:border-blue-600 transition-colors py-1"
+              />
            </div>
         </div>
 
-        {/* Quick Add Team */}
-        <div className="high-contrast-card p-3 md:col-span-2 border-slate-200 bg-slate-50/50">
-          <span className="manage-label-sm">Register New Team</span>
+        {/* Quick Add Team & Match */}
+        <div className="high-contrast-card p-3 border-slate-200 bg-slate-50/50 space-y-4">
+          <div className="space-y-1">
+             <span className="manage-label-sm">Actions</span>
+             <div className="flex gap-2">
+                <button onClick={addTeam} className="flex-1 bg-white border-2 border-slate-200 p-2 rounded-xl text-[10px] font-black uppercase hover:border-blue-600 transition-all flex items-center justify-center gap-2">
+                   <Users className="w-3 h-3" /> New Team
+                </button>
+                <button onClick={addMatch} className="flex-1 bg-slate-900 text-white p-2 rounded-xl text-[10px] font-black uppercase hover:bg-black transition-all flex items-center justify-center gap-2">
+                   <Circle className="w-3 h-3" /> New Match
+                </button>
+             </div>
+          </div>
+          
           <div className="flex gap-2 bg-white p-1 rounded-lg border border-slate-200 shadow-inner">
             <input 
               value={teamName}
               onChange={(e) => setTeamName(e.target.value)}
-              placeholder="ENTER TEAM NAME..."
+              placeholder="QUICK TEAM NAME..."
               className="manage-text-sm px-3 flex-1 outline-none font-bold"
             />
-            <div className="flex border-l border-slate-200 pl-2 gap-1 items-center">
-              <select 
-                value={teamGroup}
-                onChange={(e) => setTeamGroup(e.target.value as any)}
-                className="manage-text-sm bg-transparent px-2 outline-none font-black text-blue-600"
-              >
-                <option value="A">GRP A</option>
-                <option value="B">GRP B</option>
-              </select>
-              <button onClick={addTeam} className="bg-slate-900 text-white px-6 py-2 rounded-md text-[10px] font-black uppercase hover:bg-black transition-colors active:scale-95">Add Team</button>
-            </div>
+            <select 
+              value={teamGroup}
+              onChange={(e) => setTeamGroup(e.target.value as any)}
+              className="manage-text-sm bg-transparent px-2 outline-none font-black text-blue-600 border-l border-slate-100"
+            >
+              <option value="A">GRP A</option>
+              <option value="B">GRP B</option>
+            </select>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {data.matches.map((match, idx) => (
-          <div key={match.id} className="high-contrast-card p-3 bg-white border-slate-200">
+          <div key={match.id} className="high-contrast-card p-3 bg-white border-slate-200 group relative">
+            <button 
+              onClick={() => deleteMatch(match.id)}
+              className="absolute -top-2 -right-2 bg-red-600 text-white p-1.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all z-10 hover:scale-110"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
             <div className="flex justify-between items-center mb-2">
-              <span className="text-[9px] font-black uppercase text-slate-400">{match.title}</span>
+              <input 
+                value={match.title}
+                onChange={(e) => {
+                  const newMatches = [...data.matches];
+                  newMatches[idx] = { ...match, title: e.target.value };
+                  setData({ ...data, matches: newMatches });
+                }}
+                className="text-[9px] font-black uppercase text-slate-400 bg-transparent outline-none focus:text-slate-900"
+              />
               <select 
                 value={match.status}
                 onChange={(e) => {
@@ -1040,8 +1300,148 @@ export default function App() {
   const [data, setData] = useTournament();
   const [view, setView] = useState<'home' | 'players' | 'admin' | 'config' | 'awards'>('home');
   const [selectedMatchIdx, setSelectedMatchIdx] = useState(0);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [pendingView, setPendingView] = useState<string | null>(null);
+  const [pin, setPin] = useState('');
+  const [adminInningOverride, setAdminInningOverride] = useState<number | null>(null);
+  const [selectedTeamModalId, setSelectedTeamModalId] = useState<string | null>(null);
+
+  // Migration for Black Panther rename to Black Panthers and update match titles
+  useEffect(() => {
+    let changed = false;
+    const updatedData = JSON.parse(JSON.stringify(data));
+    updatedData.teams = updatedData.teams.map((t: any) => {
+      if (t.name === 'Black Panther') {
+        changed = true;
+        return { ...t, name: 'Black Panthers' };
+      }
+      return t;
+    });
+    updatedData.matches = updatedData.matches.map((m: any) => {
+      if (m.title.includes('Black Panther') && !m.title.includes('Black Panthers')) {
+        changed = true;
+        return { ...m, title: m.title.replace('Black Panther', 'Black Panthers') };
+      }
+      return m;
+    });
+    if (changed) setData(updatedData);
+  }, []);
+
+  // Auto-sync knockout fixtures
+  useEffect(() => {
+    const completedGroupMatches = data.matches.filter(m => m.status === 'completed' && !['m13', 'm14', 'm15'].includes(m.id));
+    if (completedGroupMatches.length > 0) {
+       const standings = getStandings(data);
+       const groupA = standings.filter(t => t.group === 'A');
+       const groupB = standings.filter(t => t.group === 'B');
+       
+       if (groupA.length >= 2 && groupB.length >= 2) {
+          const sf1Match = data.matches.find(m => m.id === 'm13');
+          const sf2Match = data.matches.find(m => m.id === 'm14');
+          
+          if (!sf1Match || !sf2Match) return;
+
+          let changed = false;
+          const updatedMatches = [...data.matches];
+          
+          const m13Idx = updatedMatches.findIndex(m => m.id === 'm13');
+          const m14Idx = updatedMatches.findIndex(m => m.id === 'm14');
+
+          if (updatedMatches[m13Idx].teamA !== groupA[0].id || updatedMatches[m13Idx].teamB !== groupB[1].id) {
+            updatedMatches[m13Idx] = { ...updatedMatches[m13Idx], teamA: groupA[0].id, teamB: groupB[1].id };
+            changed = true;
+          }
+          if (updatedMatches[m14Idx].teamA !== groupB[0].id || updatedMatches[m14Idx].teamB !== groupA[1].id) {
+            updatedMatches[m14Idx] = { ...updatedMatches[m14Idx], teamA: groupB[0].id, teamB: groupA[1].id };
+            changed = true;
+          }
+
+          if (changed) {
+            setData({ ...data, matches: updatedMatches });
+          }
+       }
+    }
+  }, [data.matches]);
 
   const selectedMatch = data.matches[selectedMatchIdx];
+  const stats0 = selectedMatch ? calculateInningsStats(selectedMatch, 0) : { balls: 0, wickets: 0 };
+  const autoActiveIdx = selectedMatch ? ((stats0.balls >= 28 || stats0.wickets >= 5) ? 1 : 0) : 0;
+  const currentActiveIdx = adminInningOverride !== null ? adminInningOverride : autoActiveIdx;
+
+  const getActivePlayers = () => {
+    if (!selectedMatch) return { striker: '', nonStriker: '' };
+    const inning = selectedMatch.innings[currentActiveIdx];
+    const teamId = currentActiveIdx === 0 ? selectedMatch.teamA : selectedMatch.teamB;
+    const team = data.teams.find(t => t.id === teamId);
+
+    if (inning?.overs.length > 0) {
+      const outPlayers = inning.overs.flatMap(o => o.balls)
+        .filter(b => b.type === 'wicket' && b.wicket?.player)
+        .map(b => b.wicket.player);
+
+      const lastOver = inning.overs[inning.overs.length - 1];
+      const lastBall = lastOver?.balls.slice(-1)[0];
+      
+      if (lastBall) {
+        let nextStriker = lastBall.striker;
+        let nextNonStriker = lastBall.nonStriker;
+
+        if (lastBall.type === 'wicket') {
+           const currentOutPlayers = [...outPlayers];
+           const allPlayers = team?.players?.map(p => p.name) || [];
+           const availablePlayers = allPlayers.filter(p => !currentOutPlayers.includes(p) && p !== nextNonStriker);
+           if (availablePlayers.length > 0) nextStriker = availablePlayers[0];
+           else nextStriker = '';
+        }
+
+        // Apply run rotation (1 or 3 runs)
+        if (lastBall.runs === 1 || lastBall.runs === 3) {
+          const temp = nextStriker;
+          nextStriker = nextNonStriker;
+          nextNonStriker = temp;
+        }
+
+        // Apply end-of-over rotation
+        const legalBallsCount = lastOver.balls.filter((b: any) => b.type !== 'wide' && b.type !== 'no-ball').length;
+        const maxLegalBallsForOver = lastOver.number === 0 ? 4 : 6;
+        if (legalBallsCount === maxLegalBallsForOver) {
+          const temp = nextStriker;
+          nextStriker = nextNonStriker;
+          nextNonStriker = temp;
+        }
+
+        return { striker: nextStriker, nonStriker: nextNonStriker };
+      }
+    }
+    return { 
+      striker: team?.players?.[0]?.name || '', 
+      nonStriker: team?.players?.[1]?.name || '' 
+    };
+  };
+  const activePlayers = getActivePlayers();
+
+  const handleNavClick = (id: string) => {
+    if (id === 'admin' || id === 'config') {
+      if (!isAdmin) {
+        setPendingView(id);
+        setShowLogin(true);
+        return;
+      }
+    }
+    setView(id as any);
+  };
+
+  const handleLogin = () => {
+    if (pin === 'admin123') {
+      setIsAdmin(true);
+      setShowLogin(false);
+      if (pendingView) setView(pendingView as any);
+      setPin('');
+    } else {
+      alert("Invalid PIN");
+    }
+  };
 
   const updateMatch = (updatedMatch: Match) => {
     const newMatches = [...data.matches];
@@ -1062,45 +1462,116 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-brand-bg flex flex-col font-sans">
-      {/* Colorful High-Contrast Header */}
-      <header className="bg-header-bg text-white px-4 py-3 sticky top-0 z-50 border-b border-white/10 shadow-lg">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-4">
-            {data.config.logo ? (
-              <img src={data.config.logo} alt="Logo" className="w-24 h-24 object-contain" referrerPolicy="no-referrer" />
-            ) : (
-              <div className="w-16 h-16 bg-blue-600 flex items-center justify-center rounded-lg shadow-inner">
-                <Trophy className="w-8 h-8 text-white" />
+      {/* Admin Login Modal */}
+      <AnimatePresence>
+        {showLogin && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-white rounded-[32px] p-8 w-full max-w-sm shadow-2xl relative border-4 border-slate-900"
+            >
+              <div className="text-center mb-8">
+                <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                   <Settings className="w-8 h-8 text-blue-600" />
+                </div>
+                <h3 className="text-2xl font-black uppercase text-slate-800 tracking-tighter">Admin Access</h3>
+                <p className="text-slate-400 text-[10px] font-bold mt-2 uppercase tracking-widest">Enter Admin PIN to Secure Console</p>
+              </div>
+
+              <div className="space-y-4">
+                <input 
+                  type="password"
+                  placeholder="••••"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-center text-3xl font-black tracking-[0.5em] focus:border-blue-600 focus:bg-white outline-none transition-all"
+                  autoFocus
+                />
+                <div className="grid grid-cols-2 gap-3">
+                   <button 
+                    onClick={() => setShowLogin(false)}
+                    className="w-full bg-slate-100 text-slate-600 px-4 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleLogin}
+                    className="w-full bg-slate-900 text-white px-4 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all border-b-4 border-black"
+                  >
+                    Login
+                  </button>
+                </div>
+                <p className="text-[9px] text-center text-slate-300 font-bold uppercase tracking-widest">Pin: admin123</p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Professional Dark Dashboard Header */}
+      <header className="bg-[#0f111a] text-white px-2 sm:px-4 py-2 sm:py-3 sticky top-0 z-50 border-b border-white/5 shadow-2xl">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-3 sm:gap-0">
+          <div className="flex items-center gap-3 sm:gap-4 w-full md:w-auto justify-between md:justify-start">
+            <div className="flex items-center gap-3 sm:gap-4 border-r border-white/10 pr-4 sm:pr-6 h-8">
+              {data.config.logo ? (
+                <img src={data.config.logo} alt="Logo" className="w-10 h-10 sm:w-12 sm:h-12 object-contain" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center rounded-lg shadow-lg">
+                  <Trophy className="w-5 text-white" />
+                </div>
+              )}
+              <h1 className="text-xl sm:text-3xl font-black tracking-tighter uppercase whitespace-nowrap leading-none text-white">
+                {data.config.tournamentName || "RSL 2026"}
+              </h1>
+            </div>
+
+            {isAdmin && (
+              <div className="md:hidden flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]"></div>
+                <span className="text-[8px] font-black uppercase text-emerald-500 tracking-widest">Admin</span>
               </div>
             )}
-            <div>
-              <h1 className="text-2xl font-black tracking-tighter uppercase leading-none">{data.config.tournamentName}</h1>
-              <span className="text-[11px] font-black text-slate-400 tracking-[0.2em] uppercase">Tournament Dashboard</span>
-            </div>
           </div>
           
-          <nav className="flex items-center gap-1 bg-white/5 p-1 rounded-full border border-white/10">
-            {[
-              { id: 'home', icon: LayoutDashboard, label: 'Dashboard' },
-              { id: 'players', icon: GitBranch, label: 'Agenda' },
-              { id: 'awards', icon: Trophy, label: 'Honours' },
-              { id: 'admin', icon: Edit, label: 'Scoring' },
-              { id: 'config', icon: Settings, label: 'Manage' }
-            ].map((item) => (
-              <button 
-                key={item.id}
-                onClick={() => setView(item.id as any)}
-                className={cn(
-                  "px-4 py-2 rounded-full text-[12px] font-black uppercase tracking-wider flex items-center gap-2 transition-all",
-                  view === item.id 
-                    ? "bg-white text-slate-900 shadow-md scale-105" 
-                    : "text-white/60 hover:text-white"
-                )}
-              >
-                <item.icon className="w-3 h-3" /> {item.label}
-              </button>
-            ))}
-          </nav>
+          <div className="flex items-center gap-4 sm:gap-8 h-full w-full md:w-auto justify-center md:justify-end">
+            <nav className="flex items-center gap-1 sm:gap-6 overflow-x-auto no-scrollbar scroll-smooth">
+              {[
+                { id: 'home', icon: LayoutDashboard, label: 'Dash' },
+                { id: 'players', icon: GitBranch, label: 'Agenda' },
+                { id: 'awards', icon: Trophy, label: 'Honours' },
+                { id: 'admin', icon: Edit, label: 'Score' },
+                { id: 'config', icon: Settings, label: 'Manage' }
+              ].map((item) => (
+                <button 
+                  key={item.id}
+                  onClick={() => handleNavClick(item.id)}
+                  className={cn(
+                    "px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[9px] sm:text-[11px] font-black uppercase tracking-widest flex items-center gap-1.5 sm:gap-2.5 transition-all shrink-0",
+                    view === item.id 
+                      ? "bg-blue-600 text-white shadow-xl shadow-blue-600/30" 
+                      : "text-slate-400 hover:text-white"
+                  )}
+                >
+                  <item.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> 
+                  <span className={cn(view === item.id ? "inline" : "hidden sm:inline")}>{item.label}</span>
+                </button>
+              ))}
+            </nav>
+
+            {isAdmin && (
+              <div className="hidden md:flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-4 py-1.5 rounded-full">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]"></div>
+                <span className="text-[10px] font-black uppercase text-emerald-500 tracking-widest">Admin</span>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -1115,10 +1586,23 @@ export default function App() {
               className="space-y-12"
             >
               <div className="space-y-6">
-                <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-800 border-l-4 border-blue-600 pl-4">Live Action</h2>
-                <MatchBanner match={selectedMatch} tournament={data} />
+                <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-800 border-l-4 border-blue-600 pl-4 mb-4">Live Action</h2>
+                <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start">
+                  <div className="flex-1 w-full min-w-0">
+                    <MatchBanner match={selectedMatch} tournament={data} 
+                      inningIndex={currentActiveIdx}
+                      striker={activePlayers.striker}
+                      nonStriker={activePlayers.nonStriker}
+                      onTeamClick={setSelectedTeamModalId}
+                    />
+                  </div>
+                  
+                  <div className="w-full justify-center flex lg:block lg:w-[340px] shrink-0">
+                    <OverTrackerPanel inning={selectedMatch?.innings[currentActiveIdx]} className="!mx-0 lg:mr-auto" />
+                  </div>
+                </div>
               </div>
-              
+
               <div className="space-y-6">
                 <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-800 border-l-4 border-emerald-600 pl-4">Table Standings</h2>
                 <StandingsTable tournament={data} />
@@ -1128,7 +1612,7 @@ export default function App() {
 
           {view === 'awards' && (
             <motion.div key="awards" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <AwardsDashboard tournament={data} />
+              <AwardsSection tournament={data} />
             </motion.div>
           )}
 
@@ -1152,13 +1636,25 @@ export default function App() {
                 </div>
               </div>
               
-              <MatchBanner match={selectedMatch} tournament={data} />
+              <MatchBanner match={selectedMatch} tournament={data} 
+                inningIndex={currentActiveIdx}
+                striker={activePlayers.striker}
+                nonStriker={activePlayers.nonStriker}
+                hideRecentTrackers={true}
+                onTeamClick={setSelectedTeamModalId}
+              />
               <ScorerPanel 
                 match={selectedMatch} 
                 onUpdate={updateMatch} 
                 tournament={data} 
                 onComplete={completeMatch}
+                inningOverride={adminInningOverride}
+                onInningOverride={setAdminInningOverride}
+                activePlayers={activePlayers}
               />
+              <div className="mt-8 flex justify-center">
+                <OverTrackerPanel inning={selectedMatch?.innings[currentActiveIdx]} />
+              </div>
             </motion.div>
           )}
 
@@ -1166,17 +1662,9 @@ export default function App() {
             <motion.div key="players" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-12">
                <TournamentTree 
                 tournament={data} 
-                setData={setData}
                 onSelect={(idx) => {
                   setSelectedMatchIdx(idx);
-                  setView('admin');
-                }} 
-              />
-               <MatchGrid 
-                tournament={data} 
-                onSelect={(idx) => {
-                  setSelectedMatchIdx(idx);
-                  setView('admin');
+                  handleNavClick('admin');
                 }} 
               />
             </motion.div>
@@ -1190,7 +1678,62 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      <footer className="mt-8 border-t border-slate-100 py-8 text-center text-[13px] font-bold text-slate-400 uppercase tracking-[0.2em]">
+      <AnimatePresence>
+        {selectedTeamModalId && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex justify-center items-center p-4"
+            onClick={() => setSelectedTeamModalId(null)}
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 10 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              {(() => {
+                const modalTeam = data.teams.find(t => t.id === selectedTeamModalId);
+                if (!modalTeam) return null;
+                return (
+                  <div>
+                    <div className="bg-gradient-to-r gap-3 from-blue-700 to-blue-900 p-6 flex items-center justify-between">
+                       <div className="flex items-center gap-4">
+                         {modalTeam.logo ? <img src={modalTeam.logo} className="w-12 h-12 object-contain" referrerPolicy="no-referrer" /> : <Trophy className="w-8 h-8 text-white" />}
+                         <h2 className="text-xl font-black uppercase text-white tracking-widest leading-none">{modalTeam.name}</h2>
+                       </div>
+                       <button onClick={() => setSelectedTeamModalId(null)} className="text-white/60 hover:text-white transition-colors">
+                         <X className="w-6 h-6" />
+                       </button>
+                    </div>
+                    <div className="p-6">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Users className="w-4 h-4 text-blue-600" />
+                        <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-500">Player Roster</h3>
+                      </div>
+                      <div className="space-y-2 max-h-[50vh] overflow-y-auto no-scrollbar pr-2">
+                        {modalTeam.players.map((p: any, i: number) => (
+                          <div key={i} className="flex justify-between items-center bg-slate-50 border border-slate-100 px-4 py-3 rounded-xl hover:border-slate-300 transition-all">
+                             <div className="flex items-center gap-3">
+                               <div className="w-1.5 h-1.5 bg-blue-600 rounded-full"></div>
+                               <span className="font-bold text-slate-800 text-sm">{p.name.toUpperCase()}</span>
+                             </div>
+                             <span className="text-[10px] font-black uppercase text-slate-400 bg-white px-2 py-1 rounded shadow-sm border border-slate-100">{p.role}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <footer className="mt-4 border-t border-slate-100 py-4 text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">
         Copyright © 2026 | r-pac Lanka (Pvt) Ltd.
       </footer>
     </div>

@@ -11,25 +11,38 @@ export function calculateInningsStats(match: Match, inningIndex: number) {
 
   let totalRuns = 0;
   let totalWickets = 0;
-  let totalBalls = 0;
+  let totalLegalBalls = 0;
 
   inning.overs.forEach(over => {
     over.balls.forEach(ball => {
       totalRuns += ball.runs + ball.extras;
       if (ball.type === 'wicket') totalWickets++;
-      if (ball.type !== 'wide' && ball.type !== 'no-ball') totalBalls++;
+      if (ball.type !== 'wide' && ball.type !== 'no-ball') totalLegalBalls++;
     });
   });
 
-  const oversCompleted = Math.floor(totalBalls / 6);
-  const extraBalls = totalBalls % 6;
+  let oversCompleted = 0;
+  let extraBalls = 0;
+
+  if (totalLegalBalls <= 4) {
+    oversCompleted = totalLegalBalls === 4 ? 1 : 0;
+    extraBalls = totalLegalBalls === 4 ? 0 : totalLegalBalls;
+  } else {
+    const ballsAfterFirst = totalLegalBalls - 4;
+    oversCompleted = Math.floor(ballsAfterFirst / 6) + 1;
+    extraBalls = ballsAfterFirst % 6;
+  }
+
   const oversFormatted = `${oversCompleted}.${extraBalls}`;
+
+  const effectiveOvers = oversCompleted + (extraBalls / (oversCompleted === 0 ? 4 : 6));
 
   return {
     runs: totalRuns,
     wickets: totalWickets,
-    overs: parseFloat(oversFormatted),
-    balls: totalBalls
+    overs: oversFormatted,
+    balls: totalLegalBalls,
+    effectiveOvers: effectiveOvers || 1
   };
 }
 
@@ -38,24 +51,38 @@ export function calculateNRR(teamId: string, tournament: TournamentData) {
   let oversFaced = 0;
   let runsConceded = 0;
   let oversBowled = 0;
+  const MAX_OVERS = 6;
 
   tournament.matches.filter(m => m.status === 'completed').forEach(match => {
-    const teamAIndex = match.teamA === teamId ? 0 : 1;
-    const teamBIndex = teamAIndex === 0 ? 1 : 0;
+    const isTeamA = match.teamA === teamId;
+    const isTeamB = match.teamB === teamId;
+    
+    if (!isTeamA && !isTeamB) return;
 
-    const teamInning = match.innings[teamAIndex];
-    const oppInning = match.innings[teamBIndex];
+    const teamIndex = isTeamA ? 0 : 1;
+    const oppIndex = isTeamA ? 1 : 0;
+
+    const teamInning = match.innings[teamIndex];
+    const oppInning = match.innings[oppIndex];
 
     if (teamInning) {
-      const stats = calculateInningsStats(match, teamAIndex);
+      const stats = calculateInningsStats(match, teamIndex);
       runsScored += stats.runs;
-      oversFaced += Math.floor(stats.balls / 6) + (stats.balls % 6) / 6;
+      if (stats.wickets >= 5) { 
+         oversFaced += MAX_OVERS;
+      } else {
+         oversFaced += Math.floor(stats.balls / 6) + (stats.balls % 6) / 6;
+      }
     }
 
     if (oppInning) {
-      const stats = calculateInningsStats(match, teamBIndex);
+      const stats = calculateInningsStats(match, oppIndex);
       runsConceded += stats.runs;
-      oversBowled += Math.floor(stats.balls / 6) + (stats.balls % 6) / 6;
+      if (stats.wickets >= 5) {
+        oversBowled += MAX_OVERS;
+      } else {
+        oversBowled += Math.floor(stats.balls / 6) + (stats.balls % 6) / 6;
+      }
     }
   });
 
@@ -79,20 +106,22 @@ export function getTournamentAwards(tournament: TournamentData) {
       inning.overs.forEach(over => {
         over.balls.forEach(ball => {
           // Batting
-          if (playerStats[ball.striker]) {
-            playerStats[ball.striker].runs += ball.runs;
+          const strikerName = ball.striker?.trim();
+          if (strikerName && playerStats[strikerName]) {
+            playerStats[strikerName].runs += ball.runs;
             if (ball.type !== 'wide' && ball.type !== 'no-ball') {
-              playerStats[ball.striker].balls += 1;
+              playerStats[strikerName].balls += 1;
             }
           }
           // Bowling
-          if (playerStats[ball.bowler]) {
-            playerStats[ball.bowler].runsConceded += ball.runs + ball.extras;
+          const bowlerName = ball.bowler?.trim();
+          if (bowlerName && playerStats[bowlerName]) {
+            playerStats[bowlerName].runsConceded += ball.runs + ball.extras;
             if (ball.type !== 'wide' && ball.type !== 'no-ball') {
-               playerStats[ball.bowler].ballsBowled += 1;
+               playerStats[bowlerName].ballsBowled += 1;
             }
             if (ball.type === 'wicket') {
-              playerStats[ball.bowler].wickets += 1;
+              playerStats[bowlerName].wickets += 1;
             }
           }
         });
@@ -104,7 +133,7 @@ export function getTournamentAwards(tournament: TournamentData) {
     name,
     ...playerStats[name],
     allRoundScore: playerStats[name].runs + (playerStats[name].wickets * 20)
-  }));
+  })).filter(p => p.runs > 0 || p.wickets > 0);
 
   const malePlayers = players.filter(p => p.gender === 'male');
   const femalePlayers = players.filter(p => p.gender === 'female');
@@ -123,12 +152,30 @@ export function getTournamentAwards(tournament: TournamentData) {
   }
 
   return {
-    playerOfSeriesMale: malePlayers.sort((a, b) => b.allRoundScore - a.allRoundScore)[0],
-    playerOfSeriesFemale: femalePlayers.sort((a, b) => b.allRoundScore - a.allRoundScore)[0],
-    bestBatsmanMale: malePlayers.sort((a, b) => b.runs - a.runs)[0],
-    bestBatsmanFemale: femalePlayers.sort((a, b) => b.runs - a.runs)[0],
-    bestBowlerMale: malePlayers.sort((a, b) => b.wickets - a.wickets)[0],
-    bestBowlerFemale: femalePlayers.sort((a, b) => b.wickets - a.wickets)[0],
+    playerOfSeriesMale: malePlayers.sort((a, b) => b.allRoundScore - a.allRoundScore)[0] ? {
+      ...malePlayers.sort((a, b) => b.allRoundScore - a.allRoundScore)[0],
+      reason: `${malePlayers.sort((a, b) => b.allRoundScore - a.allRoundScore)[0].runs} Runs & ${malePlayers.sort((a, b) => b.allRoundScore - a.allRoundScore)[0].wickets} Wkts`
+    } : null,
+    playerOfSeriesFemale: femalePlayers.sort((a, b) => b.allRoundScore - a.allRoundScore)[0] ? {
+      ...femalePlayers.sort((a, b) => b.allRoundScore - a.allRoundScore)[0],
+      reason: `${femalePlayers.sort((a, b) => b.allRoundScore - a.allRoundScore)[0].runs} Runs & ${femalePlayers.sort((a, b) => b.allRoundScore - a.allRoundScore)[0].wickets} Wkts`
+    } : null,
+    bestBatsmanMale: malePlayers.sort((a, b) => b.runs - a.runs)[0] ? {
+      ...malePlayers.sort((a, b) => b.runs - a.runs)[0],
+      reason: `${malePlayers.sort((a, b) => b.runs - a.runs)[0].runs} Runs`
+    } : null,
+    bestBatsmanFemale: femalePlayers.sort((a, b) => b.runs - a.runs)[0] ? {
+      ...femalePlayers.sort((a, b) => b.runs - a.runs)[0],
+      reason: `${femalePlayers.sort((a, b) => b.runs - a.runs)[0].runs} Runs`
+    } : null,
+    bestBowlerMale: malePlayers.sort((a, b) => b.wickets - a.wickets)[0] ? {
+      ...malePlayers.sort((a, b) => b.wickets - a.wickets)[0],
+      reason: `${malePlayers.sort((a, b) => b.wickets - a.wickets)[0].wickets} Wickets`
+    } : null,
+    bestBowlerFemale: femalePlayers.sort((a, b) => b.wickets - a.wickets)[0] ? {
+      ...femalePlayers.sort((a, b) => b.wickets - a.wickets)[0],
+      reason: `${femalePlayers.sort((a, b) => b.wickets - a.wickets)[0].wickets} Wickets`
+    } : null,
     manOfTheMatchFinale: motmFinale
   };
 }
