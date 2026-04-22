@@ -36,7 +36,7 @@ export interface Team {
   name: string;
   logo?: string;
   group: 'A' | 'B';
-  players: Player[];
+  players: any[];
 }
 
 export interface Inning {

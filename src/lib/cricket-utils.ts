@@ -96,7 +96,9 @@ export function getTournamentAwards(tournament: TournamentData) {
   // Initialize all players
   tournament.teams.forEach(team => {
     team.players.forEach(player => {
-      playerStats[player.name] = { runs: 0, balls: 0, wickets: 0, runsConceded: 0, ballsBowled: 0, gender: player.gender, team: team.name };
+      const pName = player.name || player;
+      const pGender = player.gender || 'male';
+      playerStats[pName] = { runs: 0, balls: 0, wickets: 0, runsConceded: 0, ballsBowled: 0, gender: pGender as 'male' | 'female', team: team.name };
     });
   });
 

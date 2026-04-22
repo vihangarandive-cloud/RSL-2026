@@ -503,72 +503,100 @@ function TournamentTree({ tournament, onSelect }: { tournament: TournamentData, 
     const idx = tournament.matches.findIndex(m => m.id === match.id);
     const teamA = tournament.teams.find(t => t.id === match.teamA);
     const teamB = tournament.teams.find(t => t.id === match.teamB);
+    const statsA = calculateInningsStats(match, 0);
+    const statsB = calculateInningsStats(match, 1);
+    
     return (
       <div 
         onClick={() => onSelect(idx)}
-        className="bg-white border-2 border-slate-200 p-2 rounded-xl hover:border-blue-600 hover:shadow-lg transition-all cursor-pointer group flex flex-col gap-1 w-full"
+        className="bg-white border-2 border-slate-200 p-3 rounded-xl hover:border-blue-600 hover:shadow-lg transition-all cursor-pointer group flex flex-col gap-2 w-full"
       >
-        <div className="flex justify-between items-center px-1 border-b border-slate-50 pb-1">
-          <span className="text-[7px] font-black text-slate-400 uppercase leading-none">{match.id}</span>
+        <div className="flex justify-between items-center px-1 border-b border-slate-50 pb-2">
+          <span className="text-[9px] font-black text-slate-400 uppercase leading-none">{match.title || match.id}</span>
           <span className={cn(
-             "text-[6px] font-black uppercase leading-none",
-             match.status === 'live' ? "text-red-600 animate-pulse" : 
-             match.status === 'completed' ? "text-blue-600" : "text-slate-400"
+             "text-[8px] font-black uppercase leading-none px-2 py-1 rounded",
+             match.status === 'live' ? "bg-red-100 text-red-600 animate-pulse" : 
+             match.status === 'completed' ? "bg-blue-50 text-blue-600" : "bg-slate-50 text-slate-400"
           )}>{match.status}</span>
         </div>
-        <div className="space-y-1 py-1">
-          {[teamA, teamB].map((t, i) => (
-            <div key={i} className="flex items-center gap-2">
-              {t?.logo ? <img src={t.logo} className="w-5 h-5 object-contain" /> : <div className="w-5 h-5 bg-slate-100 rounded-sm" />}
-              <span className="text-[10px] font-black uppercase text-slate-900 leading-none">{t?.name || 'TBD'}</span>
+        <div className="grid grid-cols-1 gap-1.5 py-1">
+          {[
+            { team: teamA, stats: statsA }, 
+            { team: teamB, stats: statsB }
+          ].map(({ team: t, stats }, i) => (
+            <div key={i} className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                {t?.logo ? <img src={t.logo} className="w-5 h-5 object-contain" /> : <div className="w-5 h-5 bg-slate-100 rounded-sm" />}
+                <span className={cn(
+                  "text-[11px] font-black uppercase leading-none",
+                   match.status === 'completed' && match.result?.includes(t?.name || '') ? "text-slate-900" : "text-slate-600" 
+                )}>{t?.name || 'TBD'}</span>
+              </div>
+              
+              {(match.status === 'live' || match.status === 'completed') && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-black text-slate-900 tabular-nums">{stats.runs}/{stats.wickets}</span>
+                  <span className="text-[9px] font-bold text-slate-400 tabular-nums">({Math.floor(stats.balls / 6)}.{stats.balls % 6})</span>
+                </div>
+              )}
             </div>
           ))}
         </div>
+        {match.status === 'completed' && match.result && (
+           <div className="mt-1 pt-2 border-t border-slate-50">
+             <span className="text-[9px] font-bold text-slate-500 uppercase">{match.result}</span>
+           </div>
+        )}
       </div>
     );
   };
 
   return (
-    <div className="relative bg-white rounded-[32px] p-6 lg:p-12 border-4 border-slate-100 overflow-hidden min-h-[800px] shadow-sm">
+    <div className="relative bg-white rounded-[32px] p-4 lg:p-12 border-4 border-slate-100 min-h-[800px] shadow-sm">
        {/* Background Grid */}
        <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[linear-gradient(to_right,#000_1px,transparent_1px),linear-gradient(to_bottom,#000_1px,transparent_1px)] bg-[size:20px_20px]"></div>
        
-       <div className="relative z-10 flex flex-col items-center gap-12">
+       <div className="relative z-10 flex flex-col items-center gap-16">
           
           <div className="w-full">
             <div className="text-center mb-8">
-              <span className="bg-slate-900 text-white text-[10px] font-black px-6 py-2 rounded-full uppercase tracking-widest shadow-xl">Tournament Fixtures</span>
+              <span className="bg-slate-900 text-white text-xs font-black px-6 py-2 rounded-full uppercase tracking-widest shadow-xl">Group Stage Fixtures</span>
             </div>
             
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-              {allFixtures.map(m => (
-                <MatchMiniNode key={m.id} match={m} />
-              ))}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
+              {allFixtures.map(m => <MatchMiniNode key={m.id} match={m} />)}
             </div>
           </div>
 
-          <div className="w-full flex flex-col items-center gap-8">
-             <div className="h-1 w-24 bg-slate-100 rounded-full"></div>
+          <div className="w-full flex flex-col items-center gap-8 mt-8 border-t-2 border-dashed border-slate-200 pt-16">
+             <div className="text-center mb-4">
+              <span className="bg-orange-500 text-white text-xs font-black px-6 py-2 rounded-full uppercase tracking-widest shadow-xl">Knockout Stage</span>
+             </div>
              
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-12 w-full max-w-4xl">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl relative">
+                <div className="hidden md:block absolute top-1/2 left-1/4 right-1/4 h-2 bg-slate-100 -z-10 translate-y-8"></div>
                 <div className="space-y-4">
-                   <div className="text-center font-black text-[9px] text-slate-400 uppercase tracking-widest bg-slate-50 py-1 rounded-full">Semi Final 01</div>
+                   <div className="text-center font-black text-xs text-slate-400 uppercase tracking-widest bg-slate-50 py-1 rounded-full w-max mx-auto px-4">Semi Final 01</div>
                    <MatchMiniNode match={semis[0]} />
                 </div>
                 <div className="space-y-4">
-                   <div className="text-center font-black text-[9px] text-slate-400 uppercase tracking-widest bg-slate-50 py-1 rounded-full">Semi Final 02</div>
+                   <div className="text-center font-black text-xs text-slate-400 uppercase tracking-widest bg-slate-50 py-1 rounded-full w-max mx-auto px-4">Semi Final 02</div>
                    <MatchMiniNode match={semis[1]} />
                 </div>
              </div>
 
-             <div className="flex flex-col items-center justify-center py-12 w-full max-w-sm">
+             <div className="flex flex-col items-center justify-center py-12 w-full relative mt-4">
+                <div className="hidden md:block absolute -top-12 w-1 h-12 bg-slate-200 -z-10"></div>
+                
                 <div className="absolute w-64 h-64 bg-yellow-500/10 blur-[100px] rounded-full pointer-events-none"></div>
-                <Trophy className="w-20 h-20 text-yellow-500 mb-6 drop-shadow-2xl animate-bounce" />
-                <div className="w-full shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] transform -rotate-1">
+                <Trophy className="w-20 h-20 text-yellow-500 mb-6 drop-shadow-xl z-10" />
+                
+                <div className="w-full max-w-sm relative z-10 shadow-2xl rounded-xl">
                    <MatchMiniNode match={final} />
                 </div>
-                <div className="mt-6 bg-blue-600 px-10 py-3 rounded-2xl shadow-xl border-b-4 border-blue-800">
-                   <span className="text-[12px] font-black text-white uppercase tracking-[0.3em]">Grand Finale Winner</span>
+                
+                <div className="mt-6 bg-slate-900 px-8 py-3 rounded-xl shadow-xl border-b-4 border-slate-700 relative z-10 text-center">
+                   <span className="text-xs font-black text-yellow-500 uppercase tracking-widest">Grand Finale Winner</span>
                 </div>
              </div>
           </div>
@@ -830,8 +858,9 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
                 className="w-full bg-white border-2 border-slate-200 p-2 rounded-xl text-[12px] font-black uppercase shadow-sm focus:border-blue-600 outline-none"
               >
                 {battingTeam?.players?.map((p: any) => {
-                  const isOut = outPlayers.includes(p.name);
-                  return <option key={p.name} value={p.name} disabled={isOut} className={isOut ? "text-slate-400 bg-slate-100" : ""}>{p.name.toUpperCase()} {isOut ? '(OUT)' : ''}</option>
+                  const pName = p?.name || p;
+                  const isOut = outPlayers.includes(pName);
+                  return <option key={pName} value={pName} disabled={isOut} className={isOut ? "text-slate-400 bg-slate-100" : ""}>{pName.toUpperCase()} {isOut ? '(OUT)' : ''}</option>
                 })}
               </select>
             </div>
@@ -843,8 +872,9 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
                 className="w-full bg-white border-2 border-slate-200 p-2 rounded-xl text-[12px] font-black uppercase shadow-sm focus:border-blue-600 outline-none"
               >
                 {battingTeam?.players?.map((p: any) => {
-                  const isOut = outPlayers.includes(p.name);
-                  return <option key={p.name} value={p.name} disabled={isOut} className={isOut ? "text-slate-400 bg-slate-100" : ""}>{p.name.toUpperCase()} {isOut ? '(OUT)' : ''}</option>
+                  const pName = p?.name || p;
+                  const isOut = outPlayers.includes(pName);
+                  return <option key={pName} value={pName} disabled={isOut} className={isOut ? "text-slate-400 bg-slate-100" : ""}>{pName.toUpperCase()} {isOut ? '(OUT)' : ''}</option>
                 })}
               </select>
             </div>
@@ -855,7 +885,10 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
                 onChange={(e) => setBowlerName(e.target.value)}
                 className="w-full bg-white border-2 border-slate-200 p-2 rounded-xl text-[12px] font-black uppercase shadow-sm focus:border-blue-600 outline-none"
               >
-                {bowlingTeam?.players?.map((p: any) => <option key={p.name} value={p.name}>{p.name.toUpperCase()}</option>)}
+                {bowlingTeam?.players?.map((p: any) => {
+                  const pName = p?.name || p;
+                  return <option key={pName} value={pName}>{pName.toUpperCase()}</option>
+                })}
               </select>
             </div>
           </div>
@@ -1062,11 +1095,19 @@ function ManagementPanel({ data, setData }: { data: TournamentData, setData: (d:
     setData({ ...data, matches: data.matches.filter(m => m.id !== id) });
   };
 
+  const copyDataToClipboard = () => {
+    const code = `import { TournamentData } from './types';
+
+export const INITIAL_DATA: TournamentData = ${JSON.stringify(data, null, 2)};`;
+    navigator.clipboard.writeText(code);
+    alert('Data copied to clipboard! Open AI Studio code editor, go to /src/lib/initialData.ts, select all, and paste to overwrite. Then deploy!');
+  };
+
   return (
     <div className="space-y-6 pb-24 max-w-5xl mx-auto">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Tournament Info */}
-        <div className="high-contrast-card p-3 bg-white border-blue-100 flex items-center gap-4">
+        <div className="high-contrast-card p-3 bg-white border-blue-100 flex items-center gap-4 relative">
            <ImageUpload 
               currentImage={data.config.logo} 
               onImageSelect={(b) => setData({...data, config: {...data.config, logo: b}})} 
@@ -1077,8 +1118,14 @@ function ManagementPanel({ data, setData }: { data: TournamentData, setData: (d:
               <input 
                 value={data.config.tournamentName} 
                 onChange={(e) => setData({ ...data, config: { ...data.config, tournamentName: e.target.value }})}
-                className="bg-transparent border-b border-slate-200 font-black uppercase text-xs w-full outline-none focus:border-blue-600 transition-colors py-1"
+                className="bg-transparent border-b border-slate-200 font-black uppercase text-xs w-full outline-none focus:border-blue-600 transition-colors py-1 mb-2"
               />
+              <button 
+                onClick={copyDataToClipboard}
+                className="bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-md hover:bg-slate-800 transition-colors w-full"
+              >
+                Export for Vercel Deploy
+              </button>
            </div>
         </div>
 
@@ -1211,18 +1258,22 @@ function ManagementPanel({ data, setData }: { data: TournamentData, setData: (d:
                         </button>
                       </div>
                       <div className="flex flex-wrap gap-1 mb-2">
-                        {team.players?.map((p: any, idx: number) => (
+                        {team.players?.map((p: any, idx: number) => {
+                          const pName = p?.name || p;
+                          const pGender = p?.gender || 'male';
+                          return (
                           <span key={idx} className={cn(
                             "px-2 py-0.5 rounded text-[8px] font-bold uppercase flex items-center gap-1 border transition-colors",
-                            p.gender === 'male' ? "bg-blue-50 border-blue-100 text-blue-700" : "bg-pink-50 border-pink-100 text-pink-700"
+                            pGender === 'male' ? "bg-blue-50 border-blue-100 text-blue-700" : "bg-pink-50 border-pink-100 text-pink-700"
                           )}>
-                            {p.name}
+                            {pName}
                             <Trash2 
                               onClick={() => updateTeamField(team.id, 'players', team.players.filter((_: any, i: number) => i !== idx))}
                               className="w-2 h-2 opacity-30 hover:opacity-100 cursor-pointer" 
                             />
                           </span>
-                        ))}
+                          );
+                        })}
                       </div>
                       <div className="flex flex-col gap-2 p-1 bg-slate-50 border border-slate-200 rounded-lg">
                         <div className="flex gap-1">
@@ -1389,7 +1440,7 @@ export default function App() {
 
         if (lastBall.type === 'wicket') {
            const currentOutPlayers = [...outPlayers];
-           const allPlayers = team?.players?.map(p => p.name) || [];
+           const allPlayers = team?.players?.map((p: any) => p?.name || p) || [];
            const availablePlayers = allPlayers.filter(p => !currentOutPlayers.includes(p) && p !== nextNonStriker);
            if (availablePlayers.length > 0) nextStriker = availablePlayers[0];
            else nextStriker = '';
