@@ -11,38 +11,54 @@ export function calculateInningsStats(match: Match, inningIndex: number) {
 
   let totalRuns = 0;
   let totalWickets = 0;
-  let totalLegalBalls = 0;
+  let totalBalls = 0;
 
   inning.overs.forEach(over => {
     over.balls.forEach(ball => {
       totalRuns += ball.runs + ball.extras;
       if (ball.type === 'wicket') totalWickets++;
-      if (ball.type !== 'wide' && ball.type !== 'no-ball') totalLegalBalls++;
+      // All balls are "valid" according to RSL rules
+      totalBalls++;
     });
   });
 
+  // Calculate overs completed based on rules:
+  // Over 1 (idx 0): 4 balls
+  // Others: 6 balls
   let oversCompleted = 0;
   let extraBalls = 0;
+  let ballsProcessed = 0;
 
-  if (totalLegalBalls <= 4) {
-    oversCompleted = totalLegalBalls === 4 ? 1 : 0;
-    extraBalls = totalLegalBalls === 4 ? 0 : totalLegalBalls;
-  } else {
-    const ballsAfterFirst = totalLegalBalls - 4;
-    oversCompleted = Math.floor(ballsAfterFirst / 6) + 1;
-    extraBalls = ballsAfterFirst % 6;
+  for (let i = 0; i < inning.overs.length; i++) {
+    const ballsInThisOver = inning.overs[i].balls.length;
+    const targetBalls = i === 0 ? 4 : 6;
+    
+    if (ballsInThisOver === targetBalls) {
+      oversCompleted++;
+    } else {
+      extraBalls = ballsInThisOver;
+      break;
+    }
   }
 
   const oversFormatted = `${oversCompleted}.${extraBalls}`;
-
-  const effectiveOvers = oversCompleted + (extraBalls / (oversCompleted === 0 ? 4 : 6));
+  
+  // Effective overs for NRR computation
+  let effectiveOvers = 0;
+  for (let i = 0; i < oversCompleted; i++) {
+    effectiveOvers += 1;
+  }
+  if (extraBalls > 0) {
+    const divider = oversCompleted === 0 ? 4 : 6;
+    effectiveOvers += extraBalls / divider;
+  }
 
   return {
     runs: totalRuns,
     wickets: totalWickets,
     overs: oversFormatted,
-    balls: totalLegalBalls,
-    effectiveOvers: effectiveOvers || 1
+    balls: totalBalls,
+    effectiveOvers: effectiveOvers || 0.1 // Prevent division by zero
   };
 }
 
@@ -51,7 +67,7 @@ export function calculateNRR(teamId: string, tournament: TournamentData) {
   let oversFaced = 0;
   let runsConceded = 0;
   let oversBowled = 0;
-  const MAX_OVERS = 6;
+  const MAX_OVERS = 5;
 
   tournament.matches.filter(m => m.status === 'completed').forEach(match => {
     const isTeamA = match.teamA === teamId;
@@ -68,20 +84,21 @@ export function calculateNRR(teamId: string, tournament: TournamentData) {
     if (teamInning) {
       const stats = calculateInningsStats(match, teamIndex);
       runsScored += stats.runs;
-      if (stats.wickets >= 5) { 
+      // All out at 7 wickets (8 players)
+      if (stats.wickets >= 7) { 
          oversFaced += MAX_OVERS;
       } else {
-         oversFaced += Math.floor(stats.balls / 6) + (stats.balls % 6) / 6;
+         oversFaced += stats.effectiveOvers;
       }
     }
 
     if (oppInning) {
       const stats = calculateInningsStats(match, oppIndex);
       runsConceded += stats.runs;
-      if (stats.wickets >= 5) {
+      if (stats.wickets >= 7) {
         oversBowled += MAX_OVERS;
       } else {
-        oversBowled += Math.floor(stats.balls / 6) + (stats.balls % 6) / 6;
+        oversBowled += stats.effectiveOvers;
       }
     }
   });
@@ -111,17 +128,13 @@ export function getTournamentAwards(tournament: TournamentData) {
           const strikerName = ball.striker?.trim();
           if (strikerName && playerStats[strikerName]) {
             playerStats[strikerName].runs += ball.runs;
-            if (ball.type !== 'wide' && ball.type !== 'no-ball') {
-              playerStats[strikerName].balls += 1;
-            }
+            playerStats[strikerName].balls += 1;
           }
           // Bowling
           const bowlerName = ball.bowler?.trim();
           if (bowlerName && playerStats[bowlerName]) {
             playerStats[bowlerName].runsConceded += ball.runs + ball.extras;
-            if (ball.type !== 'wide' && ball.type !== 'no-ball') {
-               playerStats[bowlerName].ballsBowled += 1;
-            }
+            playerStats[bowlerName].ballsBowled += 1;
             if (ball.type === 'wicket') {
               playerStats[bowlerName].wickets += 1;
             }

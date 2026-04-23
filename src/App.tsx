@@ -223,10 +223,10 @@ function OverTrackerPanel({ inning, className }: { inning: any, className?: stri
       
       <div className="space-y-4">
         {inning.overs.map((over: any, idx: number) => {
-          // Calculate if we need empty boxes (usually to complete 6 legal balls if over is in progress)
-          const legalBallsCount = over.balls.filter((b: any) => b.type !== 'wide' && b.type !== 'no-ball').length;
-          const targetLegalBalls = over.number === 0 ? 4 : 6;
-          const emptyBoxesCount = Math.max(0, targetLegalBalls - legalBallsCount);
+          // Rule: 4 balls for the first over, 6 for others. Every ball is valid.
+          const currentBallsCount = over.balls.length;
+          const targetBalls = over.number === 0 ? 4 : 6;
+          const emptyBoxesCount = Math.max(0, targetBalls - currentBallsCount);
           const emptyBoxes = Array(emptyBoxesCount).fill(null);
 
           return (
@@ -489,7 +489,7 @@ function AwardsSection({ tournament }: { tournament: TournamentData }) {
   );
 }
 
-function TournamentTree({ tournament, onSelect }: { tournament: TournamentData, onSelect: (idx: number) => void }) {
+function TournamentTree({ tournament, onSelect, isAdmin, setData }: { tournament: TournamentData, onSelect: (idx: number) => void, isAdmin?: boolean, setData: (d: any) => void }) {
   const allFixtures = (tournament.matches || []).filter(m => m && !['m13', 'm14', 'm15'].includes(m.id)).sort((a, b) => {
     const numA = parseInt(a.id.replace(/\D/g, '')) || 0;
     const numB = parseInt(b.id.replace(/\D/g, '')) || 0;
@@ -498,7 +498,7 @@ function TournamentTree({ tournament, onSelect }: { tournament: TournamentData, 
   const semis = (tournament.matches || []).filter(m => m && ['m13', 'm14'].includes(m.id));
   const final = (tournament.matches || []).find(m => m && m.id === 'm15');
 
-  const MatchMiniNode = ({ match }: { match: Match | undefined, key?: string }) => {
+  const MatchMiniNode = ({ match, isKnockout }: { match: Match | undefined, isKnockout?: boolean, key?: string }) => {
     if (!match) return <div className="bg-slate-100 border border-slate-200 p-2 rounded-lg h-16 w-full animate-pulse" />;
     const idx = tournament.matches.findIndex(m => m.id === match.id);
     const teamA = tournament.teams.find(t => t.id === match.teamA);
@@ -521,20 +521,37 @@ function TournamentTree({ tournament, onSelect }: { tournament: TournamentData, 
         </div>
         <div className="grid grid-cols-1 gap-1.5 py-1">
           {[
-            { team: teamA, stats: statsA }, 
-            { team: teamB, stats: statsB }
-          ].map(({ team: t, stats }, i) => (
+            { team: teamA, stats: statsA, field: 'teamA' }, 
+            { team: teamB, stats: statsB, field: 'teamB' }
+          ].map(({ team: t, stats, field }, i) => (
             <div key={i} className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
                 {t?.logo ? <img src={t.logo} className="w-5 h-5 object-contain" /> : <div className="w-5 h-5 bg-slate-100 rounded-sm" />}
-                <span className={cn(
-                  "text-[11px] font-black uppercase leading-none",
-                   match.status === 'completed' && match.result?.includes(t?.name || '') ? "text-slate-900" : "text-slate-600" 
-                )}>{t?.name || 'TBD'}</span>
+                
+                {isAdmin && isKnockout ? (
+                  <select 
+                    value={t?.id || ''} 
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                      const updatedMatches = [...tournament.matches];
+                      updatedMatches[idx] = { ...match, [field]: e.target.value };
+                      setData({ ...tournament, matches: updatedMatches });
+                    }}
+                    className="text-[10px] font-black uppercase bg-slate-50 border border-slate-100 p-0.5 rounded outline-none focus:border-blue-600 flex-1 min-w-0"
+                  >
+                    <option value="">Select Team</option>
+                    {tournament.teams.map((team: any) => <option key={team.id} value={team.id}>{team.name}</option>)}
+                  </select>
+                ) : (
+                  <span className={cn(
+                    "text-[11px] font-black uppercase leading-none truncate",
+                     match.status === 'completed' && match.result?.includes(t?.name || '') ? "text-slate-900" : "text-slate-600" 
+                  )}>{t?.name || 'TBD'}</span>
+                )}
               </div>
               
               {(match.status === 'live' || match.status === 'completed') && (
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <span className="text-xs font-black text-slate-900 tabular-nums">{stats.runs}/{stats.wickets}</span>
                   <span className="text-[9px] font-bold text-slate-400 tabular-nums">({Math.floor(stats.balls / 6)}.{stats.balls % 6})</span>
                 </div>
@@ -577,11 +594,11 @@ function TournamentTree({ tournament, onSelect }: { tournament: TournamentData, 
                 <div className="hidden md:block absolute top-1/2 left-1/4 right-1/4 h-2 bg-slate-100 -z-10 translate-y-8"></div>
                 <div className="space-y-4">
                    <div className="text-center font-black text-xs text-slate-400 uppercase tracking-widest bg-slate-50 py-1 rounded-full w-max mx-auto px-4">Semi Final 01</div>
-                   <MatchMiniNode match={semis[0]} />
+                   <MatchMiniNode match={semis[0]} isKnockout={true} />
                 </div>
                 <div className="space-y-4">
                    <div className="text-center font-black text-xs text-slate-400 uppercase tracking-widest bg-slate-50 py-1 rounded-full w-max mx-auto px-4">Semi Final 02</div>
-                   <MatchMiniNode match={semis[1]} />
+                   <MatchMiniNode match={semis[1]} isKnockout={true} />
                 </div>
              </div>
 
@@ -592,7 +609,7 @@ function TournamentTree({ tournament, onSelect }: { tournament: TournamentData, 
                 <Trophy className="w-20 h-20 text-yellow-500 mb-6 drop-shadow-xl z-10" />
                 
                 <div className="w-full max-w-sm relative z-10 shadow-2xl rounded-xl">
-                   <MatchMiniNode match={final} />
+                   <MatchMiniNode match={final} isKnockout={true} />
                 </div>
                 
                 <div className="mt-6 bg-slate-900 px-8 py-3 rounded-xl shadow-xl border-b-4 border-slate-700 relative z-10 text-center">
@@ -729,20 +746,19 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
     const currentNonStriker = nonStrikerName;
     const currentBowler = bowlerName;
 
-    // RULE: Calculate active legal balls count
-    const lastOverIdx = currentInning.overs.length > 0 ? currentInning.overs.length - 1 : 0;
-    const lastOverRef = currentInning.overs[lastOverIdx];
-    const legalBallsCount = lastOverRef ? lastOverRef.balls.filter((b: any) => b.type !== 'wide' && b.type !== 'no-ball').length : 0;
-
-    // RULE 1: First Over (Index 0) has only 4 legal balls
-    const maxLegalBallsForOver = (currentInning.overs.length <= 1 && (currentInning.overs.length === 0 || legalBallsCount < 4)) ? 4 : 6;
+    // RULE: Calculate current over status
+    const currentOverIdx = currentInning.overs.length > 0 ? currentInning.overs.length - 1 : -1;
+    const lastOverRef = currentOverIdx >= 0 ? currentInning.overs[currentOverIdx] : null;
     
-    // Check if we need to start a NEW over
-    // If no overs exist yet OR if current over is finished (4 for first, 6 for others)
-    const currentOverNeedsPush = currentInning.overs.length === 0 || (currentInning.overs.length === 1 && legalBallsCount === 4) || (currentInning.overs.length > 1 && legalBallsCount === 6);
+    // Every ball is valid
+    const ballsInOverCount = lastOverRef ? lastOverRef.balls.length : 0;
+    const requiredBallsForThisOver = (currentOverIdx === 0) ? 4 : 6;
 
-    if (currentOverNeedsPush) {
-      if (currentInning.overs.length >= 5) return; // Each team has only 5 overs
+    // Check if we need to start a NEW over
+    const needsNewOver = (currentOverIdx === -1) || (ballsInOverCount === requiredBallsForThisOver);
+
+    if (needsNewOver) {
+      if (currentInning.overs.length >= 5) return; // Max 5 overs
       currentInning.overs.push({
         number: currentInning.overs.length,
         bowler: bowlerName,
@@ -751,6 +767,7 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
     }
     
     const lastOver = currentInning.overs[currentInning.overs.length - 1];
+    const overNumberLabel = lastOver.number; // 0 to 4
     let actualRuns = 0;
     let actualExtras = 0;
 
@@ -759,20 +776,25 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
       actualRuns = parseInt(type);
     }
 
-    // RULE 2: No-ball score = 4
-    if (type === 'no-ball') actualExtras = 4;
-    else if (type === 'wide') actualExtras = 4; // Default extra is 4 runs as previously established
-    
-    // RULE 3: First over Wide/NB = 2 runs
-    const currentOverRealNumber = currentInning.overs.length;
-    if (currentOverRealNumber === 1 && (type === 'wide' || type === 'no-ball')) {
-      actualExtras = 2;
-    }
+    // EXTRA SCORING RULES
+    if (type === 'wide' || type === 'no-ball') {
+      // Default: Men's over = 4 runs
+      actualExtras = 4;
 
-    // RULE 4: Last 2 balls of each team's inning (from 26 total legal balls): Wide/NB = 2 runs
-    const totalLegal = currentInning.overs.reduce((acc: number, o: any) => acc + o.balls.filter((b: any) => b.type !== 'wide' && b.type !== 'no-ball').length, 0);
-    if (totalLegal >= 26 && (type === 'wide' || type === 'no-ball')) {
-      actualExtras = 2;
+      // Rule: First over (Women's) = 2 runs
+      if (overNumberLabel === 0) {
+        actualExtras = 2;
+      }
+
+      // Rule: Last 2 balls of 5th over in 2nd inning = 1 run
+      // activeInningIndex 1 = 2nd inning
+      // overNumberLabel 4 = 5th over
+      // lastOver.balls.length 4 or 5 = 5th or 6th ball
+      if (activeInningIndex === 1 && overNumberLabel === 4) {
+        if (lastOver.balls.length >= 4) {
+          actualExtras = 1;
+        }
+      }
     }
 
     lastOver.balls.push({
@@ -789,16 +811,16 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
     let nextStriker = currentStriker;
     let nextNonStriker = currentNonStriker;
 
-    // RULE 5: Striker Rotation on 1 or 3 runs
+    // Striker Rotation on 1 or 3 runs
     if (actualRuns === 1 || actualRuns === 3) {
       nextStriker = currentNonStriker;
       nextNonStriker = currentStriker;
     }
 
-    // RULE 6: Over rotation when over completes
-    const completedLegalBalls = lastOver.balls.filter((b: any) => b.type !== 'wide' && b.type !== 'no-ball').length;
-    const requiredLevelBalls = lastOver.number === 0 ? 4 : 6;
-    if (completedLegalBalls === requiredLevelBalls) {
+    // Over rotation when over completes
+    const completedBalls = lastOver.balls.length;
+    const requiredForComplete = overNumberLabel === 0 ? 4 : 6;
+    if (completedBalls === requiredForComplete) {
       const temp = nextStriker;
       nextStriker = nextNonStriker;
       nextNonStriker = temp;
@@ -825,6 +847,12 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
               <h3 className="text-xl font-black uppercase text-slate-900 tracking-tighter">Match Scoring Center</h3>
               <div className="flex items-center gap-2 mt-1">
                 <p className="text-[10px] font-bold uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full w-fit">Inning {activeInningIndex + 1}: {battingTeam?.name} Batting</p>
+                {match.innings[activeInningIndex]?.overs.length <= 1 && (match.innings[activeInningIndex]?.overs[0]?.balls.length || 0) < 4 && (
+                  <div className="flex items-center gap-1.5 bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full animate-pulse border border-rose-200">
+                    <Users className="w-2.5 h-2.5" />
+                    <span className="text-[8px] font-black uppercase">First Over: Woman Bowler & Batters Required</span>
+                  </div>
+                )}
                 <button 
                   onClick={() => onInningOverride?.(activeInningIndex === 0 ? 1 : 0)}
                   className="text-[8px] font-black uppercase bg-blue-600 text-white px-2 py-1 rounded-full transition-all shadow-[0_2px_0_0_#1e40af] active:translate-y-[1px]"
@@ -837,8 +865,16 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
                onClick={() => {
                  const statsA = calculateInningsStats(match, 0);
                  const statsB = calculateInningsStats(match, 1);
-                 const winner = statsA.runs > statsB.runs ? teamA?.name : teamB?.name;
-                 onComplete(`${winner} won by ${Math.abs(statsA.runs - statsB.runs)} runs`);
+                 if (statsA.runs === statsB.runs) {
+                   if (confirm("Scores are TIED! Rule: A Super Over shall be played. Mark as Tied for now?")) {
+                     onComplete("Match Tied - Super Over Required");
+                   } else {
+                     onComplete("Draw - Both teams shared points");
+                   }
+                 } else {
+                   const winner = statsA.runs > statsB.runs ? teamA?.name : teamB?.name;
+                   onComplete(`${winner} won by ${Math.abs(statsA.runs - statsB.runs)} runs`);
+                 }
                }}
                className="w-full sm:w-auto bg-emerald-600 text-white px-6 py-2.5 rounded-xl text-[11px] font-black uppercase shadow-[0_4px_0_0_#059669] active:translate-y-[2px] transition-all"
             >
@@ -1401,41 +1437,19 @@ export default function App() {
     if (changed) setData(updatedData);
   }, []);
 
-  // Auto-sync knockout fixtures
+  // Update Title and Favicon dynamically
   useEffect(() => {
-    const completedGroupMatches = data.matches.filter(m => m.status === 'completed' && !['m13', 'm14', 'm15'].includes(m.id));
-    if (completedGroupMatches.length > 0) {
-       const standings = getStandings(data);
-       const groupA = standings.filter(t => t.group === 'A');
-       const groupB = standings.filter(t => t.group === 'B');
-       
-       if (groupA.length >= 2 && groupB.length >= 2) {
-          const sf1Match = data.matches.find(m => m.id === 'm13');
-          const sf2Match = data.matches.find(m => m.id === 'm14');
-          
-          if (!sf1Match || !sf2Match) return;
-
-          let changed = false;
-          const updatedMatches = [...data.matches];
-          
-          const m13Idx = updatedMatches.findIndex(m => m.id === 'm13');
-          const m14Idx = updatedMatches.findIndex(m => m.id === 'm14');
-
-          if (updatedMatches[m13Idx].teamA !== groupA[0].id || updatedMatches[m13Idx].teamB !== groupB[1].id) {
-            updatedMatches[m13Idx] = { ...updatedMatches[m13Idx], teamA: groupA[0].id, teamB: groupB[1].id };
-            changed = true;
-          }
-          if (updatedMatches[m14Idx].teamA !== groupB[0].id || updatedMatches[m14Idx].teamB !== groupA[1].id) {
-            updatedMatches[m14Idx] = { ...updatedMatches[m14Idx], teamA: groupB[0].id, teamB: groupA[1].id };
-            changed = true;
-          }
-
-          if (changed) {
-            setData({ ...data, matches: updatedMatches });
-          }
-       }
+    document.title = data.config.tournamentName || "RSL 2026";
+    if (data.config.logo) {
+      const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement || document.createElement('link');
+      link.type = 'image/x-icon';
+      link.rel = 'shortcut icon';
+      link.href = data.config.logo;
+      document.getElementsByTagName('head')[0].appendChild(link);
     }
-  }, [data.matches]);
+  }, [data.config.tournamentName, data.config.logo]);
+
+  // Removed Auto-sync knockout fixtures to allow manual Admin selection
 
   const selectedMatch = data.matches[selectedMatchIdx];
   const stats0 = selectedMatch ? calculateInningsStats(selectedMatch, 0) : { balls: 0, wickets: 0 };
@@ -1735,6 +1749,8 @@ export default function App() {
             <motion.div key="players" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-12">
                <TournamentTree 
                 tournament={data} 
+                isAdmin={isAdmin}
+                setData={setData}
                 onSelect={(idx) => {
                   setSelectedMatchIdx(idx);
                   handleNavClick('admin');
