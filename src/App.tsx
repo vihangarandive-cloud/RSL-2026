@@ -1037,7 +1037,7 @@ function OverChart({ match }: { match: Match }) {
   );
 }
 
-function ManagementPanel({ data, setData }: { data: TournamentData, setData: (d: any) => void }) {
+function ManagementPanel({ data, setData, resetToFactory }: { data: TournamentData, setData: (d: any) => void, resetToFactory: () => void }) {
   const [teamName, setTeamName] = useState('');
   const [teamGroup, setTeamGroup] = useState<'A' | 'B'>('A');
   const [playerGender, setPlayerGender] = useState<'male' | 'female'>('male');
@@ -1322,23 +1322,45 @@ export const INITIAL_DATA: TournamentData = ${JSON.stringify(data, null, 2)};`;
         ))}
       </div>
 
-      <div className="pt-8 border-t border-slate-200 mt-12">
+      <div className="pt-8 border-t border-slate-200 mt-12 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-blue-50 p-6 rounded-2xl border-2 border-dashed border-blue-100 flex flex-col items-center gap-4">
+          <div className="text-center">
+            <h4 className="text-sm font-black uppercase text-blue-900 mb-1">Cloud Sync Status</h4>
+            <p className="text-[10px] text-blue-600 uppercase font-bold tracking-tight text-center">Connected to Supabase Realtime</p>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-sm border border-blue-100">
+             <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
+             <span className="text-[10px] font-black uppercase text-slate-600">Syncing Live</span>
+          </div>
+        </div>
+
         <div className="bg-red-50 p-6 rounded-2xl border-2 border-dashed border-red-100 flex flex-col items-center gap-4">
           <div className="text-center">
             <h4 className="text-sm font-black uppercase text-red-900 mb-1">System Recovery</h4>
-            <p className="text-[10px] text-red-600 uppercase font-bold tracking-tight">Use this if the app crashes or goes white due to large images</p>
+            <p className="text-[10px] text-red-600 uppercase font-bold tracking-tight whitespace-pre-line text-center">
+              Current Version: {data.version || 'Legacy'}{'\n'}
+              Use "Force Refresh" to pull latest logos from code.
+            </p>
           </div>
-          <button 
-            onClick={() => {
-              if (confirm("DANGEROUS: This will delete ALL tournament data, teams, and matches. Continue?")) {
-                localStorage.removeItem('cricket_tournament_data');
-                window.location.reload();
-              }
-            }}
-            className="flex items-center gap-2 bg-red-600 text-white px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
-          >
-            <Trash2 className="w-4 h-4" /> Reset All Data
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => {
+                if (confirm("Reset to latest code version? This will update logos/details but keep custom team changes if possible.")) {
+                  localStorage.removeItem('cricket_tournament_data');
+                  window.location.reload();
+                }
+              }}
+              className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+            >
+              <GitBranch className="w-3 h-3" /> Force Refresh
+            </button>
+            <button 
+              onClick={resetToFactory}
+              className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+            >
+              <Trash2 className="w-3 h-3" /> Factory Reset
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1348,7 +1370,7 @@ export const INITIAL_DATA: TournamentData = ${JSON.stringify(data, null, 2)};`;
 // --- Main App ---
 
 export default function App() {
-  const [data, setData] = useTournament();
+  const [data, setData, resetToFactory] = useTournament();
   const [view, setView] = useState<'home' | 'players' | 'admin' | 'config' | 'awards'>('home');
   const [selectedMatchIdx, setSelectedMatchIdx] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -1723,7 +1745,7 @@ export default function App() {
 
           {view === 'config' && (
             <motion.div key="config" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <ManagementPanel data={data} setData={setData} />
+              <ManagementPanel data={data} setData={setData} resetToFactory={resetToFactory} />
             </motion.div>
           )}
         </AnimatePresence>

@@ -1,6 +1,7 @@
 import { TournamentData } from './types';
 
 export const INITIAL_DATA: TournamentData = {
+  "version": 2026042301,
   "teams": [
     {
       "id": "1",

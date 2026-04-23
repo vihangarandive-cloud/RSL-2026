@@ -57,6 +57,7 @@ export interface Match {
 }
 
 export interface TournamentData {
+  version?: number;
   teams: Team[];
   matches: Match[];
   config: {
