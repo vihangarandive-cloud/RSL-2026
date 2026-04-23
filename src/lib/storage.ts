@@ -63,34 +63,6 @@ export function useTournament() {
 
     loadData();
 
-    // 2. Realtime Subscription (Sync Cloud -> Device)
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'tournament_data', filter: `id=eq.${ROW_ID}` },
-        (payload) => {
-          const newData = payload.new.data as TournamentData;
-          // Avoid loop: Only update state if someone else changed the data
-          skipNextCloudUpdate.current = true;
-          setData(newData);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  // 3. Save Changes (Device -> Cloud & LocalStorage)
-  useEffect(() => {
-    if (isInitialLoad.current) return;
-    
-    // Save to local storage for offline access
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-
     // Save to Cloud (only if not an incoming update)
     const saveToCloud = async () => {
       if (skipNextCloudUpdate.current) {
@@ -98,11 +70,19 @@ export function useTournament() {
         return;
       }
       
+      // OPTIMIZATION: Only sync matches and basic config to save bandwidth
+      // This prevents the 4MB logo data from crashing the sync
+      const syncData = {
+        version: data.version,
+        matches: data.matches,
+        config: data.config
+      };
+
       const { error } = await supabase
         .from('tournament_data')
         .upsert({ 
           id: ROW_ID, 
-          data: data, 
+          data: syncData, // Smaller payload
           updated_at: new Date().toISOString() 
         }, { onConflict: 'id' });
 
@@ -111,9 +91,43 @@ export function useTournament() {
       }
     };
 
-    const timeout = setTimeout(saveToCloud, 200); // 200ms is near-instant
+    const timeout = setTimeout(saveToCloud, 300);
     return () => clearTimeout(timeout);
-  }, [data]);
+  }, [data.matches, data.config, data.version]); // Only trigger when these change
+
+  // 2. Realtime Subscription (Sync Cloud -> Device)
+  useEffect(() => {
+    const channel = supabase
+      .channel('live-scores')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'tournament_data', filter: `id=eq.${ROW_ID}` },
+        (payload) => {
+          const remoteSyncData = payload.new.data;
+          if (!remoteSyncData) return;
+
+          setData(prev => {
+            // Only update if the remote version/data is different to avoid loops
+            if (JSON.stringify(prev.matches) === JSON.stringify(remoteSyncData.matches)) {
+              return prev;
+            }
+            
+            skipNextCloudUpdate.current = true;
+            return {
+              ...prev,
+              matches: remoteSyncData.matches,
+              config: remoteSyncData.config,
+              version: remoteSyncData.version
+            };
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Helper to manually force a reset
   const resetToFactory = async () => {
