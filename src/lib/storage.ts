@@ -67,7 +67,11 @@ export function useTournament() {
                version: remoteData.version || safePrev.version || 0
             };
             // Teams are never synced for speed, keep local teams
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            } catch (e) {
+              console.error("Local storage sync error:", e);
+            }
             return updated;
           });
           skipNextCloudUpdate.current = true;
@@ -103,7 +107,11 @@ export function useTournament() {
                 teams: remote.teams || prev.teams,
                 version: remote.version || prev.version
               };
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+              try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+              } catch (e) {
+                console.error("Local storage update error:", e);
+              }
               return updated;
             });
           } catch (e) {
@@ -123,7 +131,11 @@ export function useTournament() {
     if (isInitialLoad.current) return;
     
     // Save locally
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.error("Local storage save error:", e);
+    }
 
     const saveToCloud = async () => {
       if (skipNextCloudUpdate.current) {
