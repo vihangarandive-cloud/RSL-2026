@@ -1466,27 +1466,6 @@ export default function App() {
   const [adminInningOverride, setAdminInningOverride] = useState<number | null>(null);
   const [selectedTeamModalId, setSelectedTeamModalId] = useState<string | null>(null);
 
-  // Migration for Black Panther rename to Black Panthers and update match titles
-  useEffect(() => {
-    let changed = false;
-    const updatedData = JSON.parse(JSON.stringify(data));
-    updatedData.teams = updatedData.teams.map((t: any) => {
-      if (t.name === 'Black Panther') {
-        changed = true;
-        return { ...t, name: 'Black Panthers' };
-      }
-      return t;
-    });
-    updatedData.matches = updatedData.matches.map((m: any) => {
-      if (m.title.includes('Black Panther') && !m.title.includes('Black Panthers')) {
-        changed = true;
-        return { ...m, title: m.title.replace('Black Panther', 'Black Panthers') };
-      }
-      return m;
-    });
-    if (changed) setData(updatedData);
-  }, []);
-
   // Update Title and Favicon dynamically
   useEffect(() => {
     document.title = (data.config.tournamentName || "RSL 2026").toUpperCase();

@@ -1,59 +1,8 @@
 import { TournamentData } from './types';
 
 export const INITIAL_DATA: TournamentData = {
-  "version": 2026042304,
+  "version": 2026042305,
   "teams": [
-    {
-      "id": "1",
-      "name": "Warriors",
-      "players": [
-        "John",
-        "Mike",
-        "Sam",
-        "Dave",
-        "Chris",
-        "Alex",
-        "Tom",
-        "Bob",
-        "Jim",
-        "Luke",
-        "Ryan"
-      ]
-    },
-    {
-      "id": "2",
-      "name": "Titans",
-      "players": [
-        "Alan",
-        "Ben",
-        "Cole",
-        "Dax",
-        "Eli",
-        "Finn",
-        "Gabe",
-        "Hank",
-        "Ian",
-        "Jed",
-        "Kai"
-      ]
-    },
-    {
-      "id": "igv9v13nv",
-      "name": "Black panthers",
-      "players": [
-        "Vihanga",
-        "sithara",
-        "devinida",
-        "roshini",
-        "divya",
-        "Thilina",
-        "ashen",
-        "krishan",
-        "sameera",
-        "peshala"
-      ],
-      "logo": ""
-    },
     {
       "id": "3iba4bv3b",
       "name": "BATTLE KINGS",
