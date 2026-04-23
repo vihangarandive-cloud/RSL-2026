@@ -1489,7 +1489,7 @@ export default function App() {
 
   // Update Title and Favicon dynamically
   useEffect(() => {
-    document.title = data.config.tournamentName || "RSL 2026";
+    document.title = (data.config.tournamentName || "RSL 2026").toUpperCase();
     if (data.config.logo) {
       const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement || document.createElement('link');
       link.type = 'image/x-icon';
