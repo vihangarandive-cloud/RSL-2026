@@ -211,6 +211,31 @@ function BallBadge(props: any) {
   );
 }
 
+function TargetNeedPill({ target, currentRuns, className }: { target: number, currentRuns: number, className?: string }) {
+  const need = Math.max(0, target - currentRuns);
+  return (
+    <div className={cn(
+      "flex items-center gap-2.5 sm:gap-4 bg-[#0a0f1e] px-4 py-1.5 sm:px-7 sm:py-3 rounded-full shadow-2xl border border-white/10 animate-in fade-in zoom-in duration-500",
+      className
+    )}>
+      <Trophy className="w-4 h-4 sm:w-6 sm:h-6 text-amber-500 drop-shadow-[0_0_12px_rgba(245,158,11,0.5)]" />
+      <div className="flex items-center gap-1.5 sm:gap-3 leading-none">
+        <div className="flex items-baseline gap-1.5 whitespace-nowrap">
+          <span className="text-white font-black uppercase tracking-tighter text-[11px] sm:text-[20px]">Target</span>
+          <span className="text-white font-black text-[14px] sm:text-[24px] tracking-tight">{target}</span>
+        </div>
+        <span className="text-blue-500 font-black text-sm sm:text-2xl mx-1 select-none">/</span>
+        <div className="flex items-baseline gap-1.5 whitespace-nowrap">
+          <span className="text-blue-400 font-black italic uppercase tracking-tighter text-[11px] sm:text-[20px]">Need</span>
+          <span className="text-blue-400 font-black italic text-[14px] sm:text-[24px] tracking-tight">{need}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
 function OverTrackerPanel({ inning, className }: { inning: any, className?: string }) {
   if (!inning || !inning.overs || inning.overs.length === 0) return null;
 
@@ -352,15 +377,11 @@ function MatchBanner({ match, tournament, inningIndex = 0, striker, nonStriker, 
             </div>
             
             {inningIndex === 1 && (
-              <div className="flex flex-col items-center justify-center px-4 py-2 rounded-xl bg-slate-900 text-white min-w-[100px] shadow-lg animate-in fade-in zoom-in duration-300">
-                <span className="text-2xl sm:text-4xl font-black italic tracking-tighter">
-                  {calculateInningsStats(match, 0).runs + 1}
-                </span>
-                <span className="text-[7px] font-black uppercase tracking-widest text-white/50">TARGET</span>
-                <div className="mt-1 flex items-center gap-1">
-                  <span className="text-[9px] font-black text-yellow-400">NEED {(calculateInningsStats(match, 0).runs + 1) - stats.runs}</span>
-                </div>
-              </div>
+              <TargetNeedPill 
+                target={calculateInningsStats(match, 0).runs + 1} 
+                currentRuns={stats.runs}
+                className="mx-1"
+              />
             )}
 
             <div className="flex items-center gap-1 sm:gap-4 ml-1 sm:ml-4">
@@ -863,11 +884,11 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
               <div className="flex items-center gap-2 mt-1">
                 <p className="text-[10px] font-bold uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full w-fit">Inning {activeInningIndex + 1}: {battingTeam?.name} Batting</p>
                 {activeInningIndex === 1 && (
-                  <div className="flex items-center gap-2 px-2 py-0.5 bg-slate-900 rounded-full">
-                    <Trophy className="w-2.5 h-2.5 text-yellow-400" />
-                    <span className="text-[9px] font-black text-white uppercase">Target {calculateInningsStats(match, 0).runs + 1}</span>
-                    <span className="text-[9px] font-black text-blue-400 uppercase italic">/ Need {(calculateInningsStats(match, 0).runs + 1) - calculateInningsStats(match, 1).runs}</span>
-                  </div>
+                  <TargetNeedPill 
+                    target={calculateInningsStats(match, 0).runs + 1} 
+                    currentRuns={calculateInningsStats(match, 1).runs}
+                    className="scale-90 origin-left"
+                  />
                 )}
                 {match.innings[activeInningIndex]?.overs.length <= 1 && (match.innings[activeInningIndex]?.overs[0]?.balls.length || 0) < 4 && (
                   <div className="flex items-center gap-1.5 bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full animate-pulse border border-rose-200">
