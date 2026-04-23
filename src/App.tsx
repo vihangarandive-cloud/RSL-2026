@@ -1859,15 +1859,19 @@ export default function App() {
                         <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-500">Player Roster</h3>
                       </div>
                       <div className="space-y-2 max-h-[50vh] overflow-y-auto no-scrollbar pr-2">
-                        {modalTeam.players.map((p: any, i: number) => (
-                          <div key={i} className="flex justify-between items-center bg-slate-50 border border-slate-100 px-4 py-3 rounded-xl hover:border-slate-300 transition-all">
-                            <div className="flex items-center gap-3">
-                              <div className="w-1.5 h-1.5 bg-blue-600 rounded-full"></div>
-                              <span className="font-bold text-slate-800 text-sm">{p.name.toUpperCase()}</span>
+                        {modalTeam.players.map((p: any, i: number) => {
+                          const pName = (p?.name || p || '').toString();
+                          const pRole = p?.role || (p?.gender === 'female' ? 'Player (F)' : 'Player (M)');
+                          return (
+                            <div key={i} className="flex justify-between items-center bg-slate-50 border border-slate-100 px-4 py-3 rounded-xl hover:border-slate-300 transition-all">
+                              <div className="flex items-center gap-3">
+                                <div className="w-1.5 h-1.5 bg-blue-600 rounded-full"></div>
+                                <span className="font-bold text-slate-800 text-sm">{pName.toUpperCase()}</span>
+                              </div>
+                              <span className="text-[10px] font-black uppercase text-slate-400 bg-white px-2 py-1 rounded shadow-sm border border-slate-100">{pRole}</span>
                             </div>
-                            <span className="text-[10px] font-black uppercase text-slate-400 bg-white px-2 py-1 rounded shadow-sm border border-slate-100">{p.role}</span>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
