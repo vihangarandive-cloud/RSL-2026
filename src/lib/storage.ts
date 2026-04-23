@@ -20,39 +20,45 @@ export function useTournament() {
   useEffect(() => {
     const loadData = async () => {
       // Step A: Load from LocalStorage first for instant UI
+      let localData = INITIAL_DATA;
       try {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
           const parsed = JSON.parse(saved);
           if (INITIAL_DATA.version && (!parsed.version || INITIAL_DATA.version > parsed.version)) {
-            setData(INITIAL_DATA);
+            localData = INITIAL_DATA;
           } else {
-            setData(parsed);
+            localData = parsed;
           }
         }
       } catch (e) {
         console.error("Local storage error:", e);
       }
+      setData(localData);
 
-      // Step B: Load from Supabase Cloud
+      // Step B: Load from Supabase Cloud and MERGE
       const { data: cloudData, error } = await supabase
         .from('tournament_data')
         .select('data')
         .eq('id', ROW_ID)
         .single();
 
-      if (!error && cloudData?.data && Object.keys(cloudData.data).length > 0) {
-        const remoteData = cloudData.data as TournamentData;
+      if (!error && cloudData?.data) {
+        const remoteData = cloudData.data as Partial<TournamentData>;
         
-        // If cloud data is older than our local versioning, we'll keep local/initial
-        if (INITIAL_DATA.version && (!remoteData.version || INITIAL_DATA.version > remoteData.version)) {
-          // Push initial data to cloud if cloud is outdated
-          await supabase.from('tournament_data').upsert({ id: ROW_ID, data: INITIAL_DATA });
-        } else {
-          skipNextCloudUpdate.current = true;
-          setData(remoteData);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteData));
-        }
+        // IMPORTANT: Merge remote matches into local data to avoid losing teams/logos
+        setData(prev => {
+          const merged = {
+            ...prev,
+            ...remoteData,
+            matches: remoteData.matches || prev.matches,
+            config: remoteData.config || prev.config,
+            version: remoteData.version || prev.version
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          return merged;
+        });
+        skipNextCloudUpdate.current = true;
       } else if (error && error.code === 'PGRST116') {
         // No row exists yet, create it with initial data
         await supabase.from('tournament_data').insert({ id: ROW_ID, data: INITIAL_DATA });
@@ -63,40 +69,7 @@ export function useTournament() {
 
     loadData();
 
-    // Save to Cloud (only if not an incoming update)
-    const saveToCloud = async () => {
-      if (skipNextCloudUpdate.current) {
-        skipNextCloudUpdate.current = false;
-        return;
-      }
-      
-      // OPTIMIZATION: Only sync matches and basic config to save bandwidth
-      // This prevents the 4MB logo data from crashing the sync
-      const syncData = {
-        version: data.version,
-        matches: data.matches,
-        config: data.config
-      };
-
-      const { error } = await supabase
-        .from('tournament_data')
-        .upsert({ 
-          id: ROW_ID, 
-          data: syncData, // Smaller payload
-          updated_at: new Date().toISOString() 
-        }, { onConflict: 'id' });
-
-      if (error) {
-        console.error("Cloud Save Error:", error);
-      }
-    };
-
-    const timeout = setTimeout(saveToCloud, 300);
-    return () => clearTimeout(timeout);
-  }, [data.matches, data.config, data.version]); // Only trigger when these change
-
-  // 2. Realtime Subscription (Sync Cloud -> Device)
-  useEffect(() => {
+    // 2. Realtime Subscription (Sync Cloud -> Device)
     const channel = supabase
       .channel('live-scores')
       .on(
@@ -107,18 +80,20 @@ export function useTournament() {
           if (!remoteSyncData) return;
 
           setData(prev => {
-            // Only update if the remote version/data is different to avoid loops
+            // Avoid loops
             if (JSON.stringify(prev.matches) === JSON.stringify(remoteSyncData.matches)) {
               return prev;
             }
             
             skipNextCloudUpdate.current = true;
-            return {
+            const updated = {
               ...prev,
-              matches: remoteSyncData.matches,
-              config: remoteSyncData.config,
-              version: remoteSyncData.version
+              matches: remoteSyncData.matches || prev.matches,
+              config: remoteSyncData.config || prev.config,
+              version: remoteSyncData.version || prev.version
             };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            return updated;
           });
         }
       )
@@ -128,6 +103,45 @@ export function useTournament() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  // 3. Save Changes (Device -> Cloud & LocalStorage)
+  useEffect(() => {
+    if (isInitialLoad.current) return;
+    
+    // Save to local storage for offline access
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+    // Save to Cloud (only if not an incoming update)
+    const saveToCloud = async () => {
+      if (skipNextCloudUpdate.current) {
+        skipNextCloudUpdate.current = false;
+        return;
+      }
+      
+      // OPTIMIZATION: Only sync matches and config to keep it fast
+      const syncData = {
+        version: data.version,
+        matches: data.matches,
+        config: data.config,
+        // We only include teams if the size is small, but for scores we just stick to matches
+      };
+
+      const { error } = await supabase
+        .from('tournament_data')
+        .upsert({ 
+          id: ROW_ID, 
+          data: syncData, 
+          updated_at: new Date().toISOString() 
+        }, { onConflict: 'id' });
+
+      if (error) {
+        console.error("Cloud Save Error:", error);
+      }
+    };
+
+    const timeout = setTimeout(saveToCloud, 400); 
+    return () => clearTimeout(timeout);
+  }, [data.matches, data.config, data.version]); 
 
   // Helper to manually force a reset
   const resetToFactory = async () => {
