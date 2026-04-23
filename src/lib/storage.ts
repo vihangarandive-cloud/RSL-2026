@@ -63,6 +63,7 @@ export function useTournament() {
                // ONLY merge if remote fields exist
                matches: remoteData.matches || safePrev.matches || [],
                config: remoteData.config || safePrev.config || INITIAL_DATA.config,
+               teams: remoteData.teams || safePrev.teams || INITIAL_DATA.teams,
                version: remoteData.version || safePrev.version || 0
             };
             // Teams are never synced for speed, keep local teams
@@ -92,13 +93,14 @@ export function useTournament() {
             if (!remote || !remote.matches) return;
 
             setData(prev => {
-              if (JSON.stringify(prev.matches) === JSON.stringify(remote.matches)) return prev;
+              if (JSON.stringify(prev.matches) === JSON.stringify(remote.matches) && JSON.stringify(prev.teams) === JSON.stringify(remote.teams)) return prev;
               
               skipNextCloudUpdate.current = true;
               const updated = {
                 ...prev,
                 matches: remote.matches || prev.matches,
                 config: remote.config || prev.config,
+                teams: remote.teams || prev.teams,
                 version: remote.version || prev.version
               };
               localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
@@ -133,7 +135,8 @@ export function useTournament() {
         const syncData = {
           version: data.version,
           matches: data.matches,
-          config: data.config
+          config: data.config,
+          teams: data.teams
         };
 
         await supabase
@@ -146,7 +149,7 @@ export function useTournament() {
 
     const timeout = setTimeout(saveToCloud, 1000); // 1s debounce for stability
     return () => clearTimeout(timeout);
-  }, [data.matches, data.config, data.version]);
+  }, [data.matches, data.config, data.teams, data.version]);
 
   const resetToFactory = async () => {
     if (confirm("Factory Reset: Wipe all data and cloud scores?")) {
