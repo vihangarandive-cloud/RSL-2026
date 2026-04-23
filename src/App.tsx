@@ -1682,7 +1682,7 @@ export default function App() {
             <nav className="flex items-center gap-1 sm:gap-6 overflow-x-auto no-scrollbar scroll-smooth">
               {[
                 { id: 'home', icon: LayoutDashboard, label: 'Dash' },
-                { id: 'players', icon: GitBranch, label: 'Agenda' },
+                { id: 'players', icon: GitBranch, label: 'Match Updates' },
                 { id: 'awards', icon: Trophy, label: 'Honours' },
                 { id: 'admin', icon: Edit, label: 'Score' },
                 { id: 'config', icon: Settings, label: 'Manage' }
