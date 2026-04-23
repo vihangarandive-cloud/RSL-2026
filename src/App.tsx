@@ -223,10 +223,10 @@ function OverTrackerPanel({ inning, className }: { inning: any, className?: stri
       
       <div className="space-y-4">
         {inning.overs.map((over: any, idx: number) => {
-          // Rule: 4 balls for the first over, 6 for others. Every ball is valid.
-          const currentBallsCount = over.balls.length;
+          // Rule: 4 balls for the first over, 6 for others. Every ball is valid EXCEPT re-bowls.
+          const validBallsCount = over.balls.filter((b: any) => !b.isInvalid).length;
           const targetBalls = over.number === 0 ? 4 : 6;
-          const emptyBoxesCount = Math.max(0, targetBalls - currentBallsCount);
+          const emptyBoxesCount = Math.max(0, targetBalls - validBallsCount);
           const emptyBoxes = Array(emptyBoxesCount).fill(null);
 
           return (
@@ -351,6 +351,18 @@ function MatchBanner({ match, tournament, inningIndex = 0, striker, nonStriker, 
               <span className="text-2xl sm:text-6xl font-black text-slate-900 leading-none">{stats.wickets}</span>
             </div>
             
+            {inningIndex === 1 && (
+              <div className="flex flex-col items-center justify-center px-4 py-2 rounded-xl bg-slate-900 text-white min-w-[100px] shadow-lg animate-in fade-in zoom-in duration-300">
+                <span className="text-2xl sm:text-4xl font-black italic tracking-tighter">
+                  {calculateInningsStats(match, 0).runs + 1}
+                </span>
+                <span className="text-[7px] font-black uppercase tracking-widest text-white/50">TARGET</span>
+                <div className="mt-1 flex items-center gap-1">
+                  <span className="text-[9px] font-black text-yellow-400">NEED {(calculateInningsStats(match, 0).runs + 1) - stats.runs}</span>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center gap-1 sm:gap-4 ml-1 sm:ml-4">
               <div className="flex flex-col items-center justify-center px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl bg-slate-50 border border-slate-100 min-w-[50px] sm:min-w-[80px]">
                 <span className="text-lg sm:text-3xl font-black text-slate-900 leading-none">{stats.overs}</span>
@@ -750,12 +762,12 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
     const currentOverIdx = currentInning.overs.length > 0 ? currentInning.overs.length - 1 : -1;
     const lastOverRef = currentOverIdx >= 0 ? currentInning.overs[currentOverIdx] : null;
     
-    // Every ball is valid
-    const ballsInOverCount = lastOverRef ? lastOverRef.balls.length : 0;
+    // Every ball is valid by default, EXCEPT when rule says re-bowl
+    const validBallsInOverCount = lastOverRef ? lastOverRef.balls.filter(b => !b.isInvalid).length : 0;
     const requiredBallsForThisOver = (currentOverIdx === 0) ? 4 : 6;
 
     // Check if we need to start a NEW over
-    const needsNewOver = (currentOverIdx === -1) || (ballsInOverCount === requiredBallsForThisOver);
+    const needsNewOver = (currentOverIdx === -1) || (validBallsInOverCount === requiredBallsForThisOver);
 
     if (needsNewOver) {
       if (currentInning.overs.length >= 5) return; // Max 5 overs
@@ -770,6 +782,7 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
     const overNumberLabel = lastOver.number; // 0 to 4
     let actualRuns = 0;
     let actualExtras = 0;
+    let isThisBallInvalid = false;
 
     // Basic scoring
     if (type !== 'wicket' && type !== 'dot' && type !== 'wide' && type !== 'no-ball') {
@@ -786,13 +799,13 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
         actualExtras = 2;
       }
 
-      // Rule: Last 2 balls of 5th over in 2nd inning = 1 run
-      // activeInningIndex 1 = 2nd inning
-      // overNumberLabel 4 = 5th over
-      // lastOver.balls.length 4 or 5 = 5th or 6th ball
+      // Rule: Special Finish Rule - 2nd Innings, 5th Over, last 2 balls
       if (activeInningIndex === 1 && overNumberLabel === 4) {
-        if (lastOver.balls.length >= 4) {
+        // Find how many valid balls have been bowled in this over ALREADY
+        const currentValidInLastOver = lastOver.balls.filter(b => !b.isInvalid).length;
+        if (currentValidInLastOver >= 4) { // Ball 5 or 6
           actualExtras = 1;
+          isThisBallInvalid = true; // RE-BOWL Required
         }
       }
     }
@@ -805,6 +818,7 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
       striker: currentStriker,
       nonStriker: currentNonStriker,
       bowler: currentBowler,
+      isInvalid: isThisBallInvalid,
       wicket: type === 'wicket' ? { player: currentStriker, type: 'bowled' } : undefined
     });
 
@@ -818,9 +832,10 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
     }
 
     // Over rotation when over completes
-    const completedBalls = lastOver.balls.length;
+    // Recalculate after adding this ball
+    const completedValidBalls = lastOver.balls.filter(b => !b.isInvalid).length;
     const requiredForComplete = overNumberLabel === 0 ? 4 : 6;
-    if (completedBalls === requiredForComplete) {
+    if (completedValidBalls === requiredForComplete && !isThisBallInvalid) {
       const temp = nextStriker;
       nextStriker = nextNonStriker;
       nextNonStriker = temp;
@@ -847,6 +862,13 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
               <h3 className="text-xl font-black uppercase text-slate-900 tracking-tighter">Match Scoring Center</h3>
               <div className="flex items-center gap-2 mt-1">
                 <p className="text-[10px] font-bold uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full w-fit">Inning {activeInningIndex + 1}: {battingTeam?.name} Batting</p>
+                {activeInningIndex === 1 && (
+                  <div className="flex items-center gap-2 px-2 py-0.5 bg-slate-900 rounded-full">
+                    <Trophy className="w-2.5 h-2.5 text-yellow-400" />
+                    <span className="text-[9px] font-black text-white uppercase">Target {calculateInningsStats(match, 0).runs + 1}</span>
+                    <span className="text-[9px] font-black text-blue-400 uppercase italic">/ Need {(calculateInningsStats(match, 0).runs + 1) - calculateInningsStats(match, 1).runs}</span>
+                  </div>
+                )}
                 {match.innings[activeInningIndex]?.overs.length <= 1 && (match.innings[activeInningIndex]?.overs[0]?.balls.length || 0) < 4 && (
                   <div className="flex items-center gap-1.5 bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full animate-pulse border border-rose-200">
                     <Users className="w-2.5 h-2.5" />

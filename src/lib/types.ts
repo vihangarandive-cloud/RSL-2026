@@ -17,6 +17,7 @@ export interface Ball {
   striker: string;
   nonStriker: string;
   bowler: string;
+  isInvalid?: boolean;
 }
 
 export interface Over {

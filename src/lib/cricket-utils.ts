@@ -17,8 +17,10 @@ export function calculateInningsStats(match: Match, inningIndex: number) {
     over.balls.forEach(ball => {
       totalRuns += ball.runs + ball.extras;
       if (ball.type === 'wicket') totalWickets++;
-      // All balls are "valid" according to RSL rules
-      totalBalls++;
+      // All balls are "valid" EXCEPT those explicitly marked isInvalid (re-bowled)
+      if (!ball.isInvalid) {
+        totalBalls++;
+      }
     });
   });
 
@@ -27,16 +29,15 @@ export function calculateInningsStats(match: Match, inningIndex: number) {
   // Others: 6 balls
   let oversCompleted = 0;
   let extraBalls = 0;
-  let ballsProcessed = 0;
 
   for (let i = 0; i < inning.overs.length; i++) {
-    const ballsInThisOver = inning.overs[i].balls.length;
+    const validBallsInThisOver = inning.overs[i].balls.filter(b => !b.isInvalid).length;
     const targetBalls = i === 0 ? 4 : 6;
     
-    if (ballsInThisOver === targetBalls) {
+    if (validBallsInThisOver === targetBalls) {
       oversCompleted++;
     } else {
-      extraBalls = ballsInThisOver;
+      extraBalls = validBallsInThisOver;
       break;
     }
   }
@@ -128,13 +129,17 @@ export function getTournamentAwards(tournament: TournamentData) {
           const strikerName = ball.striker?.trim();
           if (strikerName && playerStats[strikerName]) {
             playerStats[strikerName].runs += ball.runs;
-            playerStats[strikerName].balls += 1;
+            if (!ball.isInvalid) {
+              playerStats[strikerName].balls += 1;
+            }
           }
           // Bowling
           const bowlerName = ball.bowler?.trim();
           if (bowlerName && playerStats[bowlerName]) {
             playerStats[bowlerName].runsConceded += ball.runs + ball.extras;
-            playerStats[bowlerName].ballsBowled += 1;
+            if (!ball.isInvalid) {
+              playerStats[bowlerName].ballsBowled += 1;
+            }
             if (ball.type === 'wicket') {
               playerStats[bowlerName].wickets += 1;
             }
