@@ -93,31 +93,29 @@ export function useTournament() {
 
     // Save to Cloud (only if not an incoming update)
     const saveToCloud = async () => {
-      // If this state change came from the cloud, don't send it back
       if (skipNextCloudUpdate.current) {
         skipNextCloudUpdate.current = false;
         return;
       }
       
-      console.log("Syncing UI changes to cloud...");
       const { error } = await supabase
         .from('tournament_data')
         .upsert({ 
           id: ROW_ID, 
           data: data, 
           updated_at: new Date().toISOString() 
-        });
+        }, { onConflict: 'id' });
 
       if (error) {
         console.error("Cloud Save Error:", error);
       }
     };
 
-    const timeout = setTimeout(saveToCloud, 800); // Slightly longer debounce for stability
+    const timeout = setTimeout(saveToCloud, 200); // 200ms is near-instant
     return () => clearTimeout(timeout);
   }, [data]);
 
-  // Helper to manually force a reset (useful for the UI button)
+  // Helper to manually force a reset
   const resetToFactory = async () => {
     if (confirm("This will reset everything to the code defaults. Continue?")) {
       localStorage.removeItem(STORAGE_KEY);
