@@ -97,7 +97,11 @@ export function useTournament() {
             if (!remote || !remote.matches) return;
 
             setData(prev => {
-              if (JSON.stringify(prev.matches) === JSON.stringify(remote.matches) && JSON.stringify(prev.teams) === JSON.stringify(remote.teams)) return prev;
+              if (
+                JSON.stringify(prev.matches) === JSON.stringify(remote.matches) && 
+                JSON.stringify(prev.teams) === JSON.stringify(remote.teams) &&
+                JSON.stringify(prev.config) === JSON.stringify(remote.config)
+              ) return prev;
               
               skipNextCloudUpdate.current = true;
               const updated = {
