@@ -3,7 +3,26 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Match, TournamentData } from './types';
+import { Match, TournamentData, Team } from './types';
+
+export function getMatchResultString(match: Match, teams: Team[]): string {
+  if (match.result && (match.result.includes('Super Over') || match.result.includes('Draw'))) {
+    return match.result;
+  }
+  const statsA = calculateInningsStats(match, 0);
+  const statsB = calculateInningsStats(match, 1);
+  const teamA = teams.find(t => t.id === match.teamA);
+  const teamB = teams.find(t => t.id === match.teamB);
+
+  if (statsA.runs > statsB.runs) {
+    return `${teamA?.name} won by ${statsA.runs - statsB.runs} runs`;
+  } else if (statsB.runs > statsA.runs) {
+    const wicketsLeft = 10 - statsB.wickets; // Assuming 10 wickets available
+    return `${teamB?.name} won by ${wicketsLeft} wickets`;
+  } else {
+    return 'Match Tied';
+  }
+}
 
 export function calculateInningsStats(match: Match, inningIndex: number) {
   const inning = match.innings[inningIndex];
@@ -211,7 +230,8 @@ export function getStandings(tournament: TournamentData) {
       if (m.teamA === team.id || m.teamB === team.id) {
         played++;
         // Very basic result logic
-        if (m.result?.includes(team.name)) won++;
+        const resultString = getMatchResultString(m, tournament.teams);
+        if (resultString.includes(team.name)) won++;
         else lost++;
       }
     });

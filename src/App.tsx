@@ -33,7 +33,7 @@ import {
   Cell
 } from 'recharts';
 import { useTournament } from './lib/storage';
-import { getStandings, calculateInningsStats, getTournamentAwards } from './lib/cricket-utils';
+import { getStandings, calculateInningsStats, getTournamentAwards, getMatchResultString } from './lib/cricket-utils';
 import { RunType, Match, TournamentData, Player } from './lib/types';
 import { cn } from './lib/utils';
 
@@ -586,15 +586,15 @@ function TournamentTree({ tournament, onSelect, isAdmin, setData }: { tournament
               {(match.status === 'live' || match.status === 'completed') && (
                 <div className="flex items-center gap-1.5 shrink-0">
                   <span className="text-xs font-black text-slate-900 tabular-nums">{stats.runs}/{stats.wickets}</span>
-                  <span className="text-[9px] font-bold text-slate-400 tabular-nums">({Math.floor(stats.balls / 6)}.{stats.balls % 6})</span>
+                <span className="text-[9px] font-bold text-slate-400 tabular-nums">({Math.floor(stats.balls / 6)}.{stats.balls % 6})</span>
                 </div>
               )}
             </div>
           ))}
         </div>
-        {match.status === 'completed' && match.result && (
+        {match.status === 'completed' && (
           <div className="mt-1 pt-2 border-t border-slate-50">
-            <span className="text-[9px] font-bold text-slate-500 uppercase">{match.result}</span>
+            <span className="text-[9px] font-bold text-slate-500 uppercase">{getMatchResultString(match, tournament.teams) || match.result}</span>
           </div>
         )}
       </div>
@@ -709,9 +709,9 @@ function MatchGrid({ tournament, onSelect }: { tournament: TournamentData, onSel
                 </div>
               </div>
 
-              {match.status === 'completed' && match.result && (
+              {match.status === 'completed' && (
                 <div className="mt-2 pt-1 border-t border-slate-200 text-[6px] font-bold text-center text-blue-600 line-clamp-1">
-                  {match.result}
+                  {getMatchResultString(match, tournament.teams) || match.result}
                 </div>
               )}
 
@@ -915,8 +915,7 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
                     onComplete("Draw - Both teams shared points");
                   }
                 } else {
-                  const winner = statsA.runs > statsB.runs ? teamA?.name : teamB?.name;
-                  onComplete(`${winner} won by ${Math.abs(statsA.runs - statsB.runs)} runs`);
+                  onComplete(getMatchResultString(match, tournament.teams));
                 }
               }}
               className="w-full sm:w-auto bg-emerald-600 text-white px-6 py-2.5 rounded-xl text-[11px] font-black uppercase shadow-[0_4px_0_0_#059669] active:translate-y-[2px] transition-all"
