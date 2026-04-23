@@ -64,5 +64,6 @@ export interface TournamentData {
   config: {
     logo?: string;
     tournamentName: string;
+    activeMatchId?: string;
   };
 }

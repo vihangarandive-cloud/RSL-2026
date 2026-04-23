@@ -1451,7 +1451,15 @@ export const INITIAL_DATA: TournamentData = ${JSON.stringify(data, null, 2)};`;
 export default function App() {
   const [data, setData, resetToFactory] = useTournament();
   const [view, setView] = useState<'home' | 'players' | 'admin' | 'config' | 'awards'>('home');
-  const [selectedMatchIdx, setSelectedMatchIdx] = useState(0);
+  const selectedMatchIdx = useMemo(() => {
+    if (data.config.activeMatchId) {
+      const idx = data.matches.findIndex(m => m.id === data.config.activeMatchId);
+      if (idx !== -1) return idx;
+    }
+    const liveIdx = data.matches.findIndex(m => m.status === 'live');
+    if (liveIdx !== -1) return liveIdx;
+    return 0;
+  }, [data.matches, data.config.activeMatchId]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [pendingView, setPendingView] = useState<string | null>(null);
@@ -1795,7 +1803,13 @@ export default function App() {
                 isAdmin={isAdmin}
                 setData={setData}
                 onSelect={(idx) => {
-                  setSelectedMatchIdx(idx);
+                  const match = data.matches[idx];
+                  if (match) {
+                    setData((prev: any) => ({
+                      ...prev,
+                      config: { ...prev.config, activeMatchId: match.id }
+                    }));
+                  }
                   handleNavClick('admin');
                 }} 
               />
