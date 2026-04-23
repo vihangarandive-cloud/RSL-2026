@@ -67,11 +67,7 @@ export function useTournament() {
                version: remoteData.version || safePrev.version || 0
             };
             // Teams are never synced for speed, keep local teams
-            try {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-            } catch (e) {
-              console.error("Local storage sync error:", e);
-            }
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
             return updated;
           });
           skipNextCloudUpdate.current = true;
@@ -97,11 +93,7 @@ export function useTournament() {
             if (!remote || !remote.matches) return;
 
             setData(prev => {
-              if (
-                JSON.stringify(prev.matches) === JSON.stringify(remote.matches) && 
-                JSON.stringify(prev.teams) === JSON.stringify(remote.teams) &&
-                JSON.stringify(prev.config) === JSON.stringify(remote.config)
-              ) return prev;
+              if (JSON.stringify(prev.matches) === JSON.stringify(remote.matches) && JSON.stringify(prev.teams) === JSON.stringify(remote.teams)) return prev;
               
               skipNextCloudUpdate.current = true;
               const updated = {
@@ -111,11 +103,7 @@ export function useTournament() {
                 teams: remote.teams || prev.teams,
                 version: remote.version || prev.version
               };
-              try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-              } catch (e) {
-                console.error("Local storage update error:", e);
-              }
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
               return updated;
             });
           } catch (e) {
@@ -135,11 +123,7 @@ export function useTournament() {
     if (isInitialLoad.current) return;
     
     // Save locally
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.error("Local storage save error:", e);
-    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 
     const saveToCloud = async () => {
       if (skipNextCloudUpdate.current) {
