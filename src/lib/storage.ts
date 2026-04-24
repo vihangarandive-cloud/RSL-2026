@@ -12,7 +12,24 @@ const STORAGE_KEY = 'cricket_tournament_data';
 const ROW_ID = 1;
 
 export function useTournament() {
-  const [data, setData] = useState<TournamentData>(INITIAL_DATA);
+  const [data, setData] = useState<TournamentData>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && Array.isArray(parsed.matches) && Array.isArray(parsed.teams)) {
+            if (!INITIAL_DATA.version || (parsed.version && parsed.version >= INITIAL_DATA.version)) {
+              return parsed;
+            }
+          }
+        } catch (e) {
+          console.error("Local storage initialization error:", e);
+        }
+      }
+    }
+    return INITIAL_DATA;
+  });
   const isInitialLoad = useRef(true);
   const skipNextCloudUpdate = useRef(false);
 
@@ -27,25 +44,7 @@ export function useTournament() {
     }
 
     const loadData = async () => {
-      // 1. Load from LocalStorage (with safety)
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed && Array.isArray(parsed.matches) && Array.isArray(parsed.teams)) {
-            // Check version
-            if (INITIAL_DATA.version && (!parsed.version || INITIAL_DATA.version > parsed.version)) {
-              setData(INITIAL_DATA);
-            } else {
-              setData(parsed);
-            }
-          }
-        }
-      } catch (e) {
-        console.error("Local storage recovery error:", e);
-      }
-
-      // 2. Load from Supabase (with heavy safety)
+      // 1. Load from Supabase (with heavy safety)
       try {
         const { data: cloudData, error } = await supabase
           .from('tournament_data')
@@ -54,19 +53,25 @@ export function useTournament() {
           .single();
 
         if (!error && cloudData?.data) {
-          const remoteData = cloudData.data as Partial<TournamentData>;
+          const remoteData = cloudData.data as TournamentData;
           
           setData(prev => {
-            const safePrev = prev || INITIAL_DATA;
+            // Only update if there's an actual change to prevent flicker/redundant updates
+            if (prev && 
+                JSON.stringify(prev.matches) === JSON.stringify(remoteData.matches) && 
+                JSON.stringify(prev.config) === JSON.stringify(remoteData.config) &&
+                JSON.stringify(prev.teams) === JSON.stringify(remoteData.teams) &&
+                prev.version >= (remoteData.version || 0)) {
+              return prev;
+            }
+
             const updated = {
-               ...safePrev,
-               // ONLY merge if remote fields exist
-               matches: remoteData.matches || safePrev.matches || [],
-               config: remoteData.config || safePrev.config || INITIAL_DATA.config,
-               teams: remoteData.teams || safePrev.teams || INITIAL_DATA.teams,
-               version: remoteData.version || safePrev.version || 0
+               ...prev,
+               matches: remoteData.matches || prev.matches || [],
+               config: remoteData.config || prev.config || INITIAL_DATA.config,
+               teams: remoteData.teams || prev.teams || INITIAL_DATA.teams,
+               version: Math.max(remoteData.version || 0, prev.version || 0)
             };
-            // Teams are never synced for speed, keep local teams
             localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
             return updated;
           });
