@@ -12,6 +12,7 @@ const STORAGE_KEY = 'cricket_tournament_data';
 const ROW_ID = 1;
 
 export function useTournament() {
+  const [isLoaded, setIsLoaded] = useState(false);
   const [data, setData] = useState<TournamentData>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -19,9 +20,9 @@ export function useTournament() {
         try {
           const parsed = JSON.parse(saved);
           if (parsed && Array.isArray(parsed.matches) && Array.isArray(parsed.teams)) {
-            if (!INITIAL_DATA.version || (parsed.version && parsed.version >= INITIAL_DATA.version)) {
-              return parsed;
-            }
+            // We consider it "loaded" if we have local data, 
+            // though we still sync with cloud in background
+            return parsed;
           }
         } catch (e) {
           console.error("Local storage initialization error:", e);
@@ -82,6 +83,7 @@ export function useTournament() {
       }
       
       isInitialLoad.current = false;
+      setIsLoaded(true);
     };
 
     loadData();
@@ -164,5 +166,5 @@ export function useTournament() {
     }
   };
 
-  return [data, setData, resetToFactory] as const;
+  return [data, setData, resetToFactory, isLoaded] as const;
 }

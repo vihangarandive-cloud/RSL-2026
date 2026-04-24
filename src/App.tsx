@@ -33,6 +33,7 @@ import {
   Cell
 } from 'recharts';
 import { useTournament } from './lib/storage';
+import { INITIAL_DATA } from './lib/initialData';
 import { getStandings, calculateInningsStats, getTournamentAwards, getMatchResultString } from './lib/cricket-utils';
 import { RunType, Match, TournamentData, Player } from './lib/types';
 import { cn } from './lib/utils';
@@ -1448,8 +1449,31 @@ export const INITIAL_DATA: TournamentData = ${JSON.stringify(data, null, 2)};`;
 // --- Main App ---
 
 export default function App() {
-  const [data, setData, resetToFactory] = useTournament();
+  const [data, setData, resetToFactory, isLoaded] = useTournament();
   const [view, setView] = useState<'home' | 'players' | 'admin' | 'config' | 'awards'>('home');
+
+  // Show a loading screen if we haven't loaded anything yet 
+  // and we don't have local data (i.e. we are using INITIAL_DATA)
+  if (!isLoaded && JSON.stringify(data.matches) === JSON.stringify(INITIAL_DATA.matches)) {
+    return (
+      <div className="min-h-screen bg-[#0f111a] flex flex-col items-center justify-center p-4">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex flex-col items-center gap-8"
+        >
+          <div className="relative">
+            <div className="w-24 h-24 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin"></div>
+            <Trophy className="w-10 h-10 text-blue-600 absolute inset-0 m-auto animate-pulse" />
+          </div>
+          <div className="text-center space-y-2">
+            <h1 className="text-3xl font-black text-white uppercase tracking-tighter italic">Initializing Dashboard</h1>
+            <p className="text-blue-400 font-bold text-[10px] uppercase tracking-[0.3em] animate-pulse">Syncing Accurate Match Data...</p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
   const selectedMatchIdx = useMemo(() => {
     if (data.config.activeMatchId) {
       const idx = data.matches.findIndex(m => m.id === data.config.activeMatchId);
