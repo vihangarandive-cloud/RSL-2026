@@ -1579,7 +1579,7 @@ export default function App() {
   };
 
   const handleLogin = () => {
-    if (pin === 'admin123') {
+    if (pin === '123456') {
       setIsAdmin(true);
       setShowLogin(false);
       if (pendingView) setView(pendingView as any);
@@ -1654,7 +1654,7 @@ export default function App() {
                     Login
                   </button>
                 </div>
-                <p className="text-[9px] text-center text-slate-300 font-bold uppercase tracking-widest">Pin: admin123</p>
+                <p className="text-[9px] text-center text-slate-300 font-bold uppercase tracking-widest">Pin: 123456</p>
               </div>
             </motion.div>
           </motion.div>
