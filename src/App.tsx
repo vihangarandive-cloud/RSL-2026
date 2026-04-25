@@ -821,6 +821,12 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
         actualExtras = 2;
       }
 
+      // Rule: 2nd Over - Extra balls for no balls and wides
+      if (overNumberLabel === 1) {
+        actualExtras = 1;
+        isThisBallInvalid = true;
+      }
+
       // Rule: Special Finish Rule - 2nd Innings, 5th Over, last 2 balls
       if (activeInningIndex === 1 && overNumberLabel === 4) {
         // Find how many valid balls have been bowled in this over ALREADY
@@ -1041,7 +1047,7 @@ function ScorerPanel({ match, onUpdate, tournament, onComplete, inningOverride, 
                     </div>
                   ))}
                   {/* Empty dots for legal balls */}
-                  {Array.from({ length: Math.max(0, (oidx === 0 ? 4 : 6) - over.balls.filter((b: any) => b.type !== 'wide' && b.type !== 'no-ball').length) }).map((_, i) => (
+                  {Array.from({ length: Math.max(0, (oidx === 0 ? 4 : 6) - over.balls.filter((b: any) => !b.isInvalid).length) }).map((_, i) => (
                     <div key={`empty-${i}`} className="w-5 h-5 bg-slate-100 border border-slate-200 rounded-[2px] opacity-40"></div>
                   ))}
                 </div>
